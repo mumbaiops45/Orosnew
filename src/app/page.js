@@ -1,69 +1,173 @@
-import Image from "next/image";
+import Link from "next/link";
+import { ArrowRight, Percent } from "@phosphor-icons/react/ssr";
+import BannerCarousel from "@/components/BannerCarousel";
+import Rail from "@/components/Rail";
+import ProductImage from "@/components/ProductImage";
+import {
+  PRODUCTS,
+  CATEGORIES,
+  formatINR,
+  discountPct,
+  categoryImage,
+} from "@/lib/products";
 
 export default function Home() {
+  const bestsellers = PRODUCTS.filter((p) => p.bestseller);
+  const featured = PRODUCTS.filter((p) => p.featured);
+  const desk = PRODUCTS.filter((p) => p.category === "desk");
+  const deals = [...PRODUCTS].sort((a, b) => discountPct(b) - discountPct(a)).slice(0, 6);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.js
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <div className="space-y-3 pb-3">
+      <BannerCarousel />
+
+      <Rail
+        title="Bestsellers this month"
+        subtitle="What everyone else is printing"
+        products={bestsellers}
+        href="/shop"
+      />
+
+      {/* ── Deals grid ── */}
+      <section className="bg-shell">
+        <div className="mx-auto max-w-[1440px] px-4 lg:px-6">
+          <div className="flex items-center justify-between gap-4 py-5">
+            <div className="flex items-center gap-2.5">
+              <span className="grid h-8 w-8 place-items-center rounded-full bg-gold-lt">
+                <Percent size={16} className="text-gold-dk" />
+              </span>
+              <div>
+                <h2 className="font-display text-xl font-extrabold tracking-tight text-ink lg:text-2xl">
+                  Biggest discounts
+                </h2>
+                <p className="mt-0.5 text-xs text-ink-3 lg:text-sm">
+                  Ends when the print queue clears
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/shop?sort=discount"
+              className="shrink-0 rounded-md bg-flame px-5 py-2.5 text-xs font-extrabold uppercase tracking-wide text-white transition-colors hover:bg-flame-dk lg:text-sm"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              View all
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 pb-6 sm:grid-cols-3 lg:grid-cols-6">
+            {deals.map((p) => (
+              <Link
+                key={p.slug}
+                href={`/shop/${p.slug}`}
+                className="group rounded-lg border border-line p-3 text-center transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_10px_28px_-14px_rgba(43,27,77,0.4)]"
+              >
+                <div className="relative mb-2 aspect-square overflow-hidden rounded-md bg-canvas">
+                  <ProductImage
+                    src={p.image}
+                    alt={p.name}
+                    sizes="(max-width: 640px) 50vw, 16vw"
+                    overlay
+                    imgClassName="transition-transform duration-500 group-hover:scale-105"
+                  />
+                </div>
+                <p className="line-clamp-1 text-sm font-bold text-ink">{p.name}</p>
+                <p className="mt-1 text-base font-extrabold text-leaf">
+                  {discountPct(p)}% off
+                </p>
+                <p className="text-xs text-ink-3">from {formatINR(p.price)}</p>
+              </Link>
+            ))}
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      </section>
+
+      <Rail
+        title="Best of desk"
+        subtitle="Caddies, organisers and displays that actually fit"
+        products={desk}
+        href="/shop?category=desk"
+      />
+
+      {/* ── Bulk strip ── */}
+      <section className="bg-shell">
+        <div className="mx-auto max-w-[1440px] px-4 py-4 lg:px-6">
+          <Link
+            href="/bulk"
+            className="group relative flex flex-col gap-6 overflow-hidden rounded-xl bg-ink px-6 py-9 sm:px-10 lg:flex-row lg:items-center lg:justify-between"
           >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+            <div
+              className="pointer-events-none absolute -right-20 -top-20 h-72 w-72 rounded-full opacity-40 blur-3xl"
+              style={{
+                background: "radial-gradient(circle, #7c5cff 0%, transparent 70%)",
+              }}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <div className="relative">
+              <span className="mb-3 inline-block rounded-full bg-gold px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.14em] text-ink">
+                Bulk & wholesale
+              </span>
+              <h2 className="font-display text-2xl font-extrabold tracking-tight text-white lg:text-3xl">
+                Buying 25 or more? Your price drops automatically.
+              </h2>
+              <p className="mt-2 max-w-xl text-sm text-white/65 lg:text-base">
+                Corporate gifts, retail stock, event merch, spare parts. Tier
+                pricing is applied in the cart — no negotiation needed.
+              </p>
+            </div>
+            <span className="relative inline-flex shrink-0 items-center gap-2 rounded-md bg-flame px-7 py-3.5 text-sm font-extrabold text-white transition-colors group-hover:bg-gold group-hover:text-ink">
+              Get a bulk quote
+              <ArrowRight
+                size={16}
+                className="transition-transform duration-300 group-hover:translate-x-1"
+              />
+            </span>
+          </Link>
         </div>
-      </main>
+      </section>
+
+      <Rail
+        title="New & noteworthy"
+        subtitle="Fresh off the print farm"
+        products={featured}
+        href="/shop"
+      />
+
+      {/* ── Category tiles ── */}
+      <section className="bg-shell">
+        <div className="mx-auto max-w-[1440px] px-4 lg:px-6">
+          <h2 className="py-5 font-display text-xl font-extrabold tracking-tight text-ink lg:text-2xl">
+            Shop by category
+          </h2>
+          <div className="grid grid-cols-2 gap-3 pb-8 sm:grid-cols-3 lg:grid-cols-6">
+            {CATEGORIES.map((c) => {
+              const count = PRODUCTS.filter((p) => p.category === c.slug).length;
+              return (
+                <Link
+                  key={c.slug}
+                  href={`/shop?category=${c.slug}`}
+                  className="group overflow-hidden rounded-lg border border-line transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_10px_28px_-14px_rgba(43,27,77,0.4)]"
+                >
+                  <div className="relative aspect-4/3 overflow-hidden">
+                    <ProductImage
+                      src={categoryImage(c.slug)}
+                      alt={c.name}
+                      sizes="(max-width: 640px) 50vw, 16vw"
+                      overlay
+                      imgClassName="transition-transform duration-500 group-hover:scale-105"
+                    />
+                  </div>
+                  <div className="p-3">
+                    <p className="text-sm font-bold text-ink group-hover:text-flame">
+                      {c.name}
+                    </p>
+                    <p className="text-xs text-ink-3">
+                      {count} product{count === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

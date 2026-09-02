@@ -1,26 +1,122 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ══════════════════════════════════════════════════════════
+   OROS — design tokens
+
+   Marketplace density (Flipkart-style), warm palette.
+   Deliberately no black: the darkest ink is a deep aubergine
+   violet, and the page canvas is a warm grey rather than #eee.
+══════════════════════════════════════════════════════════ */
+@theme {
+  /* Ink — deep violet, never #000 */
+  --color-ink: #2b1b4d;
+  --color-ink-2: #4a3a6b;
+  --color-ink-3: #7a6b96;
+  --color-ink-4: #a99ec2;
+  --color-ink-5: #cfc7de;
+
+  /* Grounds — cards sit white on a warm grey canvas */
+  --color-canvas: #f2eff5;
+  --color-shell: #ffffff;
+  --color-cream: #fbf7f0;
+  --color-cream-2: #f5eee2;
+
+  /* Brand — molten filament orange */
+  --color-flame: #ff5a2c;
+  --color-flame-dk: #e6421a;
+  --color-flame-lt: #fff1ec;
+
+  /* Commerce actions — amber adds to cart, flame buys now */
+  --color-gold: #ffb627;
+  --color-gold-dk: #f0a20d;
+  --color-gold-lt: #fff6e4;
+
+  /* Ratings / in-stock */
+  --color-leaf: #1a9e5f;
+  --color-leaf-lt: #e7f7ee;
+
+  /* Supporting chroma */
+  --color-lilac: #7c5cff;
+  --color-lilac-lt: #f1ecff;
+  --color-mint: #00c9a7;
+  --color-mint-lt: #e6fbf6;
+  --color-sky: #4cb8ff;
+  --color-sky-lt: #eaf6ff;
+
+  /* Lines */
+  --color-line: #e6e1ee;
+
+  /* Chrome — the header/announcement bar run near-black, but it is a deep
+     aubergine rather than #000 so the neon reads as lit rather than printed. */
+  --color-night: #0a0514;
+  --color-night-2: #140a26;
+  --color-night-3: #1d1033;
+  --color-neon: #a855f7;
+  --color-neon-2: #c084fc;
+  --color-neon-dim: #6b3fa0;
+
+  /* Type */
+  --font-display: var(--font-bricolage), "Bricolage Grotesque", system-ui, sans-serif;
+  --font-body: var(--font-jakarta), "Plus Jakarta Sans", system-ui, sans-serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  /* Lenis drives scrolling — never let the browser fight it */
+  scroll-behavior: auto;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Lenis */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+/* Elements GSAP will reveal start hidden, but only once JS is live —
+   without this, a failed hydration would leave the page blank. */
+.js-ready [data-anim] {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .js-ready [data-anim] {
+    visibility: visible !important;
+  }
+}
+
+::selection {
+  background: var(--color-flame);
+  color: #fff;
+}
+
+/* Horizontal rails scroll by drag/arrow — hide the bar, keep the overflow */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Number inputs in the qty stepper shouldn't show spinners */
+.no-spin::-webkit-outer-spin-button,
+.no-spin::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.no-spin {
+  -moz-appearance: textfield;
 }
