@@ -1,12 +1,5 @@
 import { Bricolage_Grotesque, Plus_Jakarta_Sans } from "next/font/google";
-import SmoothScroll from "@/components/SmoothScroll";
-import { CartProvider } from "@/context/CartContext";
-import { UserProvider } from "@/context/UserContext";
-import AnnouncementBar from "@/components/AnnouncementBar";
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
-import CartDrawer from "@/components/CartDrawer";
-import CartFly from "@/components/CartFly";
+import AppInit from "@/components/AppInit";
 import "./globals.css";
 
 const bricolage = Bricolage_Grotesque({
@@ -31,18 +24,8 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${bricolage.variable} ${jakarta.variable}`}>
       <body>
-        <UserProvider>
-          <CartProvider>
-          <SmoothScroll>
-            <AnnouncementBar />
-            <Header />
-            <main className="min-h-screen">{children}</main>
-            <Footer />
-            <CartDrawer />
-            <CartFly />
-          </SmoothScroll>
-        </CartProvider>
-        </UserProvider>
+        <AppInit />
+        {children}
       </body>
     </html>
   );

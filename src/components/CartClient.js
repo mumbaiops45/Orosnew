@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Minus, Plus, Trash, ShoppingCart, Tag, CaretRight } from "@phosphor-icons/react";
 import ProductImage from "@/components/ProductImage";
-import { useCart } from "@/context/CartContext";
-import { formatINR, colorHex, unitPriceFor } from "@/lib/products";
+import { useCart } from "@/store/cartStore";
+import { formatINR } from "@/lib/format";
 
 export default function CartClient() {
   const router = useRouter();
@@ -69,9 +69,19 @@ export default function CartClient() {
                       >
                         {l.product.name}
                       </Link>
-                      <p className="mt-0.5 text-xs text-ink-3">
-                        {l.color} · {l.material}
-                      </p>
+                      {l.options?.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {l.options.map((o) => (
+                            <span
+                              key={o.name}
+                              className="rounded bg-canvas px-2 py-0.5 text-[11px] font-semibold text-ink-2"
+                            >
+                              <span className="text-ink-4">{o.name}:</span>{" "}
+                              {o.value}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <div className="text-right">
@@ -158,18 +168,12 @@ export default function CartClient() {
               <Row label={`Price (${count} item${count > 1 ? "s" : ""})`}>
                 {formatINR(subtotal)}
               </Row>
-              <Row label="Discount" accent>
-                − {formatINR(savings)}
-              </Row>
-              <Row label="Delivery" accent={delivery === 0}>
-                {delivery === 0 ? "Free" : formatINR(delivery)}
-              </Row>
-
-              {delivery > 0 && (
-                <p className="rounded bg-gold-lt px-3 py-2 text-[11px] font-semibold text-ink-2">
-                  Add {formatINR(2000 - subtotal)} more for free delivery
-                </p>
+              {savings > 0 && (
+                <Row label="Discount" accent>
+                  − {formatINR(savings)}
+                </Row>
               )}
+              <Row label="Delivery">Calculated at checkout</Row>
 
               <div className="border-t border-dashed border-line pt-3">
                 <div className="flex items-center justify-between">

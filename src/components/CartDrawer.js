@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   X,
@@ -8,20 +8,15 @@ import {
   Minus,
   Plus,
   Trash,
-  Truck,
   Tag,
   CaretRight,
   ShoppingCart,
 } from "@phosphor-icons/react";
 import { gsap, useGSAP, prefersReducedMotion } from "@/lib/gsap";
 import ProductImage from "@/components/ProductImage";
-import { useCart } from "@/context/CartContext";
-import {
-  formatINR,
-  colorHex,
-  recommendFor,
-  FREE_DELIVERY_OVER,
-} from "@/lib/products";
+import { useCart } from "@/store/cartStore";
+import { formatINR } from "@/lib/format";
+import { fetchSuggested } from "@/lib/catalog";
 
 export default function CartDrawer() {
   const {
@@ -130,10 +125,22 @@ export default function CartDrawer() {
     return hit ? [hit, ...lines.filter((l) => l.key !== justAddedKey)] : lines;
   }, [lines, justAddedKey]);
 
-  const recommended = useMemo(
-    () => recommendFor(lines.map((l) => l.slug), 4),
-    [lines]
-  );
+  const [recommended, setRecommended] = useState([]);
+  const seedId = lines[0]?.productId || null;
+
+  useEffect(() => {
+    if (!drawerOpen || !seedId) return;
+    let alive = true;
+    fetchSuggested(seedId, 4).then((list) => {
+      if (!alive) return;
+      const inCart = new Set(lines.map((l) => l.productId));
+      setRecommended(list.filter((p) => !inCart.has(p.id)).slice(0, 4));
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawerOpen, seedId]);
 
   return (
     <div
@@ -224,9 +231,11 @@ export default function CartDrawer() {
                         </span>
                       </div>
 
-                      <p className="mt-0.5 text-xs text-ink-3">
-                        {l.color} · {l.material}
-                      </p>
+                      {l.variantLabel && (
+                        <p className="mt-0.5 text-xs text-ink-3">
+                          {l.variantLabel}
+                        </p>
+                      )}
 
                       {l.tiered && (
                         <p className="mt-1.5 inline-flex items-center gap-1 rounded bg-leaf-lt px-1.5 py-0.5 text-[10px] font-bold text-leaf">
@@ -269,13 +278,13 @@ export default function CartDrawer() {
               </ul>
 
               <div data-drawer-anim className="px-5 py-4">
-                <DrawerBanner subtotal={subtotal} lines={lines} />
+                <DrawerBanner lines={lines} />
               </div>
 
               {recommended.length > 0 && (
                 <section data-drawer-anim className="border-t border-line px-5 py-5">
                   <h3 className="mb-3 text-xs font-bold uppercase tracking-[0.12em] text-ink-4">
-                    Goes well with this
+                    Related to what&apos;s in your cart
                   </h3>
                   <div className="grid grid-cols-2 gap-3">
                     {recommended.map((p) => (
@@ -305,13 +314,7 @@ export default function CartDrawer() {
                           </p>
                         </Link>
                         <button
-                          onClick={() =>
-                            add(p.slug, {
-                              color: p.colors[0],
-                              material: p.materials[0],
-                              qty: 1,
-                            })
-                          }
+                          onClick={() => add(p, { qty: p.minQty || 1 })}
                           className="mt-2 w-full rounded bg-gold py-1.5 text-[11px] font-extrabold uppercase tracking-wide text-ink transition-colors hover:bg-gold-dk"
                         >
                           + Add
@@ -364,31 +367,8 @@ export default function CartDrawer() {
 
 /* ── The contextual banner under the cart lines ─────────── */
 
-function DrawerBanner({ subtotal, lines }) {
-  const remaining = FREE_DELIVERY_OVER - subtotal;
-
-  // 1. Closest, most actionable win: free delivery.
-  if (remaining > 0) {
-    const pct = Math.min(100, (subtotal / FREE_DELIVERY_OVER) * 100);
-    return (
-      <div className="rounded-lg border border-line bg-gold-lt p-4">
-        <div className="flex items-center gap-2">
-          <Truck size={17} className="text-gold-dk" weight="fill" />
-          <p className="text-sm font-bold text-ink">
-            {formatINR(remaining)} away from free delivery
-          </p>
-        </div>
-        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
-          <div
-            className="h-full rounded-full bg-gold-dk transition-[width] duration-700"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  // 2. Next best: nudge toward the next bulk tier on a real line.
+function DrawerBanner({ lines }) {
+  // Nudge toward the next bulk tier on a real line.
   const near = lines.find((l) => l.nextTier);
   if (near) {
     const need = near.nextTier.minQty - near.qty;
@@ -413,20 +393,18 @@ function DrawerBanner({ subtotal, lines }) {
     );
   }
 
-  // 3. Everything unlocked — point at the wholesale desk.
+  // Otherwise point at the wholesale desk.
   return (
     <Link
       href="/bulk"
       className="flex items-center gap-3 rounded-lg border border-line bg-canvas p-4 transition-colors hover:border-ink-5"
     >
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-leaf-lt">
-        <Check size={16} className="text-leaf" weight="bold" />
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-lilac-lt">
+        <Tag size={15} className="text-lilac" weight="fill" />
       </span>
       <div className="flex-1">
-        <p className="text-sm font-bold text-ink">Free delivery unlocked</p>
-        <p className="text-xs text-ink-3">
-          Ordering for a business? See wholesale rates.
-        </p>
+        <p className="text-sm font-bold text-ink">Ordering for a business?</p>
+        <p className="text-xs text-ink-3">See wholesale tier pricing.</p>
       </div>
       <CaretRight size={15} className="text-ink-3" weight="bold" />
     </Link>

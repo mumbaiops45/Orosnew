@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { gsap, useGSAP, prefersReducedMotion } from "@/lib/gsap";
 import ProductImage from "@/components/ProductImage";
-import { useCart } from "@/context/CartContext";
+import { useCart } from "@/store/cartStore";
 
 /**
  * The "product flies into the cart" animation.

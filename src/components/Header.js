@@ -6,63 +6,64 @@ import Link from "next/link";
 import {
   ShoppingCart,
   Diamond,
-  Horse,
-  Lamp,
-  Toolbox,
-  PottedPlant,
-  Snowflake,
-  Armchair,
   Crown,
+  CaretLeft,
+  CaretRight,
 } from "@phosphor-icons/react";
 import { gsap, useGSAP, prefersReducedMotion } from "@/lib/gsap";
-import { useCart } from "@/context/CartContext";
-import { CATEGORIES, formatINR } from "@/lib/products";
+import { useCart } from "@/store/cartStore";
+import { formatINR } from "@/lib/format";
+import { fetchCategories } from "@/lib/catalog";
 import ProfileMenu from "@/components/ProfileMenu";
 import SearchBox from "@/components/SearchBox";
 
-const CATEGORY_ICON = {
-  figurines: Horse,
-  lighting: Lamp,
-  desk: Toolbox,
-  decor: PottedPlant,
-  seasonal: Snowflake,
-  furniture: Armchair,
-};
+const HEX_CLIP =
+  "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)";
 
-/**
- * Hexagon plate behind a category icon. Drawn as an SVG outline rather than a
- * clip-path so the stroke stays crisp at any size.
- */
-function Hex({ children, tone = "neon" }) {
-  const stroke = tone === "gold" ? "#f5b301" : "#a855f7";
+/** Hexagon plate — a category image clipped to fill it edge to edge. */
+function HexImage({ src, alt, tone = "neon" }) {
+  const ring = tone === "gold" ? "#f5b301" : "#a855f7";
   return (
-    <span className="relative grid h-[58px] w-[50px] shrink-0 place-items-center">
-      <svg
-        viewBox="0 0 100 112"
-        fill="none"
+    <span
+      className="relative block h-[54px] w-[48px] shrink-0 transition-transform duration-300 group-hover:scale-105"
+      style={{ clipPath: HEX_CLIP }}
+    >
+      <span
         aria-hidden="true"
-        className="absolute inset-0 h-full w-full transition-transform duration-300 group-hover:scale-105"
+        className="absolute inset-0"
+        style={{ background: ring, opacity: 0.9 }}
+      />
+      <span
+        className="absolute inset-[2px] overflow-hidden"
+        style={{ clipPath: HEX_CLIP, background: "#12071f" }}
       >
-        <path
-          d="M50 3 94 28.5v55L50 109 6 83.5v-55z"
-          stroke={stroke}
-          strokeWidth="3.5"
-          strokeLinejoin="round"
-          opacity="0.8"
-        />
-      </svg>
-      <span className="relative">{children}</span>
+        {src ? (
+          <Image
+            src={src}
+            alt={alt}
+            fill
+            sizes="48px"
+            className="object-cover"
+          />
+        ) : null}
+      </span>
     </span>
   );
 }
 
 export default function Header() {
   const [compact, setCompact] = useState(false);
+  const [categories, setCategories] = useState([]);
   const { count, subtotal, openDrawer } = useCart();
   const badge = useRef(null);
+  const rail = useRef(null);
+  const [canLeft, setCanLeft] = useState(false);
+  const [canRight, setCanRight] = useState(false);
 
-  // At rest the header shows the full rail; once you start scrolling the rail
-  // folds away so the sticky chrome does not eat a quarter of the viewport.
+  useEffect(() => {
+    fetchCategories().then(setCategories);
+  }, []);
+
   useEffect(() => {
     const onScroll = () => setCompact(window.scrollY > 40);
     onScroll();
@@ -70,8 +71,29 @@ export default function Header() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Pop the badge whenever the count changes, so the number itself
-  // acknowledges the add even if the flying ghost was missed.
+  const syncRail = () => {
+    const el = rail.current;
+    if (!el) return;
+    setCanLeft(el.scrollLeft > 4);
+    setCanRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  };
+
+  useEffect(() => {
+    syncRail();
+    const el = rail.current;
+    if (!el) return;
+    el.addEventListener("scroll", syncRail, { passive: true });
+    window.addEventListener("resize", syncRail);
+    return () => {
+      el.removeEventListener("scroll", syncRail);
+      window.removeEventListener("resize", syncRail);
+    };
+  }, [categories, compact]);
+
+  const pageRail = (dir) => {
+    rail.current?.scrollBy({ left: dir * 320, behavior: "smooth" });
+  };
+
   useGSAP(
     () => {
       if (!badge.current || !count || prefersReducedMotion()) return;
@@ -86,8 +108,6 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-50 bg-night">
-      {/* Ambient purple wash. Flat paint on an opaque bar — no translucency
-          or backdrop blur, so nothing behind it shows through. */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0"
@@ -98,10 +118,7 @@ export default function Header() {
       />
 
       <div className="relative mx-auto max-w-[1600px] px-3 py-3 lg:px-8">
-        {/* ══ Top row ══ */}
         <div className="flex items-center gap-3 lg:gap-6">
-          {/* Mark only — the supplied lockup already contains the OROS
-              wordmark, so any text beside it would be a second one. */}
           <Link href="/" aria-label="OROS — home" className="group shrink-0">
             <Image
               src="/brand/oros-logo.jpg"
@@ -113,13 +130,11 @@ export default function Header() {
             />
           </Link>
 
-          {/* ── Who you are, kept on the left beside the mark ── */}
           <span className="hidden h-10 w-px shrink-0 bg-white/12 lg:block" />
           <ProfileMenu />
 
           <SearchBox />
 
-          {/* ── Actions ── */}
           <div className="flex shrink-0 items-center gap-2 lg:gap-3">
             <Link
               href="/bulk"
@@ -130,9 +145,7 @@ export default function Header() {
                 <span className="block text-sm font-bold text-white">
                   Bulk Orders
                 </span>
-                <span className="block text-[11px] text-white/50">
-                  Best deals
-                </span>
+                <span className="block text-[11px] text-white/50">Best deals</span>
               </span>
             </Link>
 
@@ -143,8 +156,6 @@ export default function Header() {
               aria-label={`Open cart, ${count} item${count === 1 ? "" : "s"}`}
               className="flex items-center gap-2.5 rounded-xl px-2 py-2 transition-colors hover:bg-white/5"
             >
-              {/* data-cart-icon is the landing target for the fly-to-cart
-                  animation — CartFly measures this element. */}
               <span
                 data-cart-icon
                 className="relative inline-grid place-items-center"
@@ -171,53 +182,73 @@ export default function Header() {
 
         {/* ══ Category rail ══ */}
         <nav
-          className={`overflow-hidden rounded-2xl border-neon/25 bg-night-2 px-2 transition-all duration-300 ease-out ${
+          className={`relative overflow-hidden rounded-2xl border-neon/25 bg-night-2 px-2 transition-all duration-300 ease-out ${
             compact
               ? "mt-0 max-h-0 border-0 opacity-0"
               : "mt-3 max-h-40 border opacity-100"
           }`}
         >
-          <ul className="no-scrollbar flex items-center gap-1 overflow-x-auto py-2.5 lg:gap-2">
-            {CATEGORIES.map((c) => {
-              const Icon = CATEGORY_ICON[c.slug];
-              return (
-                <li key={c.slug} className="shrink-0 lg:flex-1">
-                  <Link
-                    href={`/shop?category=${c.slug}`}
-                    className="group flex w-[108px] flex-col items-center gap-1 rounded-xl px-2 py-1.5 transition-colors hover:bg-white/5 lg:w-full"
-                  >
-                    <Hex>
-                      <Icon size={23} className="text-white" />
-                    </Hex>
-                    <span className="block text-center leading-tight">
-                      <span className="block text-[9px] font-extrabold uppercase tracking-[0.22em] text-neon">
-                        OROS
-                      </span>
-                      <span className="mt-0.5 block whitespace-nowrap text-[13px] font-semibold text-white/90 group-hover:text-white">
-                        {c.name}
-                      </span>
-                    </span>
-                  </Link>
-                </li>
-              );
-            })}
+          {canLeft && (
+            <button
+              onClick={() => pageRail(-1)}
+              aria-label="Scroll categories left"
+              className="absolute left-1 top-1/2 z-10 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-night text-white shadow-lg ring-1 ring-neon/40 hover:bg-night-2"
+            >
+              <CaretLeft size={16} weight="bold" />
+            </button>
+          )}
+          {canRight && (
+            <button
+              onClick={() => pageRail(1)}
+              aria-label="Scroll categories right"
+              className="absolute right-1 top-1/2 z-10 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-night text-white shadow-lg ring-1 ring-neon/40 hover:bg-night-2"
+            >
+              <CaretRight size={16} weight="bold" />
+            </button>
+          )}
 
-            {/* Wholesale gets its own gold treatment — it is the highest-value
-                path in the store, not just another category. */}
-            <li className="shrink-0 lg:flex-1">
+          <ul
+            ref={rail}
+            className="no-scrollbar flex items-start justify-start gap-0 overflow-x-auto px-1 py-2.5"
+          >
+            {categories.map((c) => (
+              <li key={c.slug} className="w-[104px] shrink-0">
+                <Link
+                  href={`/shop?category=${c.slug}`}
+                  title={c.name}
+                  className="group flex w-full min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-1.5 transition-colors hover:bg-white/5"
+                >
+                  <HexImage src={c.image} alt={c.name} />
+                  <span className="block w-full min-w-0 text-center leading-tight">
+                    <span className="block text-[9px] font-extrabold uppercase tracking-[0.22em] text-neon">
+                      OROS
+                    </span>
+                    <span className="mt-0.5 block w-full truncate text-[13px] font-semibold text-white/90 group-hover:text-white">
+                      {c.name}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+
+            <li className="w-[104px] shrink-0">
               <Link
                 href="/bulk"
-                className="group flex w-[108px] flex-col items-center gap-1 rounded-xl border border-gold/60 px-2 py-1.5 transition-colors hover:bg-gold/10 lg:w-full"
+                title="Wholesale"
+                className="group flex w-full min-w-0 flex-col items-center gap-1 rounded-xl border border-gold/60 px-1 py-1.5 transition-colors hover:bg-gold/10"
               >
-                <Hex tone="gold">
-                  <Crown size={23} className="text-gold" weight="fill" />
-                </Hex>
-                <span className="block text-center leading-tight">
+                <span
+                  className="relative grid h-[54px] w-[48px] shrink-0 place-items-center transition-transform duration-300 group-hover:scale-105"
+                  style={{ clipPath: HEX_CLIP, background: "#f5b30122" }}
+                >
+                  <Crown size={22} className="text-gold" weight="fill" />
+                </span>
+                <span className="block w-full min-w-0 text-center leading-tight">
                   <span className="block text-[9px] font-extrabold uppercase tracking-[0.22em] text-gold">
                     OROS
                   </span>
-                  <span className="mt-0.5 block whitespace-nowrap text-[13px] font-bold text-gold">
-                    Wholesale Zone
+                  <span className="mt-0.5 block w-full truncate text-[13px] font-bold text-gold">
+                    Wholesale
                   </span>
                 </span>
               </Link>

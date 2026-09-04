@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import BulkDesk from "@/components/BulkDesk";
 
 export const metadata = {
@@ -7,5 +8,15 @@ export const metadata = {
 };
 
 export default function BulkPage() {
-  return <BulkDesk />;
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-[1600px] px-4 py-20 text-sm text-ink-3 lg:px-8">
+          Loading…
+        </div>
+      }
+    >
+      <BulkDesk />
+    </Suspense>
+  );
 }

@@ -2,26 +2,12 @@
 
 import { useRef } from "react";
 import Link from "next/link";
-import { Star, Lightning } from "@phosphor-icons/react";
+import { useRouter } from "next/navigation";
+import { Lightning } from "@phosphor-icons/react";
 import ProductImage from "@/components/ProductImage";
-import { useCart } from "@/context/CartContext";
-import { formatINR, colorHex, discountPct } from "@/lib/products";
-
-export function RatingChip({ rating, reviews, compact = false }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="flex items-center gap-1 rounded bg-leaf px-1.5 py-0.5 text-[11px] font-bold text-white">
-        {rating.toFixed(1)}
-        <Star size={9} weight="fill" />
-      </span>
-      {!compact && (
-        <span className="text-xs font-semibold text-ink-4">
-          ({reviews.toLocaleString("en-IN")})
-        </span>
-      )}
-    </div>
-  );
-}
+import { useCartStore } from "@/store/cartStore";
+import { useAuthStore } from "@/store/authStore";
+import { formatINR, discountPct } from "@/lib/format";
 
 export function PriceBlock({ product, size = "md" }) {
   const off = discountPct(product);
@@ -54,29 +40,44 @@ export function PriceBlock({ product, size = "md" }) {
 }
 
 export default function ProductCard({ product: p, className = "" }) {
-  const { add } = useCart();
-  const swatch = colorHex(p.colors[0]);
+  const add = useCartStore((s) => s.add);
+  const token = useAuthStore((s) => s.token);
+  const router = useRouter();
   const art = useRef(null);
 
   const quickAdd = (e) => {
-    // The card is a link — stop the click before it navigates.
     e.preventDefault();
     e.stopPropagation();
-    add(p.slug, {
-      color: p.colors[0],
-      material: p.materials[0],
-      qty: 1,
-      // Fly from the artwork, not the button, so the product is what moves.
+
+    // no login, no cart — ask them to sign in
+    if (!token) {
+      window.dispatchEvent(new CustomEvent("oros:require-auth"));
+      return;
+    }
+
+    // a product with variants can't be quick-added — send them to the page
+    if (p.options?.length > 0) {
+      router.push(`/shop/${p.slug}`);
+      return;
+    }
+
+    add(p, {
+      qty: p.minQty || 1,
       origin: art.current?.getBoundingClientRect(),
     });
   };
+
+  const shortBlurb = p.blurb
+    ? p.blurb.length > 68
+      ? `${p.blurb.slice(0, 68).trimEnd()}…`
+      : p.blurb
+    : "";
 
   return (
     <Link
       href={`/shop/${p.slug}`}
       className={`group relative flex flex-col rounded-lg border border-line bg-shell p-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-ink-5 hover:shadow-[0_10px_28px_-14px_rgba(43,27,77,0.4)] ${className}`}
     >
-      {/* ── Artwork ── */}
       <div
         ref={art}
         className="relative mb-3 grid aspect-square place-items-center overflow-hidden rounded-md bg-canvas"
@@ -88,15 +89,9 @@ export default function ProductCard({ product: p, className = "" }) {
           imgClassName="transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-105"
         />
 
-        {p.badge && (
+        {p.bulkTiers?.length > 0 && (
           <span className="absolute left-2 top-2 rounded bg-ink px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
-            {p.badge}
-          </span>
-        )}
-
-        {p.stock <= 25 && (
-          <span className="absolute bottom-2 left-2 rounded bg-flame-lt px-2 py-1 text-[10px] font-bold text-flame">
-            Only {p.stock} left
+            Bulk pricing
           </span>
         )}
 
@@ -109,25 +104,26 @@ export default function ProductCard({ product: p, className = "" }) {
         </button>
       </div>
 
-      {/* ── Detail ── */}
       <h3 className="line-clamp-1 text-sm font-bold text-ink transition-colors group-hover:text-flame">
         {p.name}
       </h3>
 
-      <div className="mt-1.5">
-        <RatingChip rating={p.rating} reviews={p.reviews} />
-      </div>
-
-      <p className="mt-1.5 line-clamp-1 text-xs text-ink-3">{p.blurb}</p>
+      {shortBlurb && (
+        <p className="mt-1.5 line-clamp-1 text-xs text-ink-3">{shortBlurb}</p>
+      )}
 
       <div className="mt-2">
         <PriceBlock product={p} />
       </div>
 
-      <div className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-leaf">
-        <Lightning size={11} weight="fill" />
-        Ships in 48h
-      </div>
+      {p.leadTimeDays != null && (
+        <div className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-leaf">
+          <Lightning size={11} weight="fill" />
+          {p.leadTimeDays === 0
+            ? "Ships in 48h"
+            : `Made in ${p.leadTimeDays} day${p.leadTimeDays === 1 ? "" : "s"}`}
+        </div>
+      )}
     </Link>
   );
 }

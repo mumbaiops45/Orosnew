@@ -65,6 +65,35 @@ html {
   scroll-behavior: auto;
 }
 
+/* Themed vertical scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-flame) var(--color-canvas);
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-canvas);
+}
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    var(--color-flame),
+    var(--color-flame-dk)
+  );
+  border-radius: 9999px;
+  border: 2px solid var(--color-canvas);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-flame-dk);
+}
+/* the dark header/footer chrome keeps a dark track */
+.bg-night ::-webkit-scrollbar-track,
+.bg-night-2 ::-webkit-scrollbar-track {
+  background: var(--color-night-2);
+}
+
 body {
   background-color: var(--color-canvas);
   color: var(--color-ink);
@@ -119,4 +148,46 @@ html.lenis body {
 }
 .no-spin {
   -moz-appearance: textfield;
+}
+
+/* Dual-thumb price range — two <input type=range> stacked; only the
+   thumbs take pointer events so both handles stay draggable. */
+.range-dual {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.range-dual::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  height: 18px;
+  width: 18px;
+  border-radius: 9999px;
+  background: var(--color-flame);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 5px rgba(43, 27, 77, 0.35);
+  cursor: pointer;
+}
+.range-dual::-moz-range-thumb {
+  pointer-events: auto;
+  height: 18px;
+  width: 18px;
+  border-radius: 9999px;
+  background: var(--color-flame);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 5px rgba(43, 27, 77, 0.35);
+  cursor: pointer;
+}
+.range-dual::-webkit-slider-runnable-track {
+  background: transparent;
+}
+.range-dual::-moz-range-track {
+  background: transparent;
 }

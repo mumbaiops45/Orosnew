@@ -10,31 +10,24 @@ import {
   MapPin,
 } from "@phosphor-icons/react/ssr";
 import NotifyForm from "@/components/NotifyForm";
-import {
-  PRODUCTS,
-  CATEGORIES,
-  FREE_DELIVERY_OVER,
-  formatINR,
-} from "@/lib/products";
+import { fetchCategories, fetchProducts } from "@/lib/catalog";
 
-/* Numbers, not adjectives — each one is either read from the catalogue or
-   is a floor fact stated elsewhere on the site. */
-const FACTS = [
-  {
-    icon: Cube,
-    value: PRODUCTS.length,
-    label: "objects in the catalogue",
-  },
-  { icon: Printer, value: 40, label: "printers on the floor" },
-  { icon: Truck, value: "48h", label: "dispatch on in-stock items" },
-  {
-    icon: Tag,
-    value: "40%",
-    label: "off per unit at 500+",
-  },
-];
+export const dynamic = "force-dynamic";
 
-export default function Footer() {
+export default async function Footer() {
+  const [categories, pool] = await Promise.all([
+    fetchCategories(),
+    fetchProducts({ limit: 1 }),
+  ]);
+  const productCount = pool.pagination?.total || 0;
+
+  const FACTS = [
+    { icon: Cube, value: productCount, label: "objects in the catalogue" },
+    { icon: Printer, value: 40, label: "printers on the floor" },
+    { icon: Truck, value: "48h", label: "dispatch on in-stock items" },
+    { icon: Tag, value: "40%", label: "off per unit at 500+" },
+  ];
+
   return (
     <footer className="mt-6 bg-night text-white">
       {/* Matches the header's wash so the page is bookended by the same
@@ -116,25 +109,19 @@ export default function Footer() {
                   href="/shop"
                   className="text-sm font-semibold text-white/80 transition-colors hover:text-neon-2"
                 >
-                  All {PRODUCTS.length} products
+                  All {productCount} products
                 </Link>
               </li>
-              {CATEGORIES.map((c) => {
-                const n = PRODUCTS.filter((p) => p.category === c.slug).length;
-                return (
-                  <li key={c.slug}>
-                    <Link
-                      href={`/shop?category=${c.slug}`}
-                      className="group flex items-baseline gap-2 text-sm text-white/60 transition-colors hover:text-white"
-                    >
-                      {c.name}
-                      <span className="text-xs text-white/25 group-hover:text-white/40">
-                        {n}
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
+              {categories.map((c) => (
+                <li key={c.slug}>
+                  <Link
+                    href={`/shop?category=${c.slug}`}
+                    className="group flex items-baseline gap-2 text-sm text-white/60 transition-colors hover:text-white"
+                  >
+                    {c.name}
+                  </Link>
+                </li>
+              ))}
             </ul>
           </nav>
 
@@ -185,7 +172,7 @@ export default function Footer() {
           </p>
 
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-white/40">
-            <span>Free delivery over {formatINR(FREE_DELIVERY_OVER)}</span>
+            <span>Printed to order</span>
             <span className="hidden h-3 w-px bg-white/15 sm:block" />
             <span>14-day returns</span>
             <span className="hidden h-3 w-px bg-white/15 sm:block" />

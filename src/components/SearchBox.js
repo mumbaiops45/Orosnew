@@ -9,26 +9,11 @@ import {
   ArrowUpRight,
   Check,
 } from "@phosphor-icons/react";
-import { PRODUCTS, CATEGORIES, formatINR, getCategory } from "@/lib/products";
+import { formatINR } from "@/lib/format";
+import { fetchCategories, fetchProducts } from "@/lib/catalog";
 
 const MAX_PRODUCTS = 6;
-const MAX_CATEGORIES = 2;
 
-/** "All" plus every category, as the search-scope options. */
-const SCOPES = [{ slug: "", name: "All Categories" }, ...CATEGORIES];
-
-/** Rank matches so the most literal ones surface first. */
-function scoreProduct(p, needle) {
-  const name = p.name.toLowerCase();
-  if (name.startsWith(needle)) return 0;
-  if (name.includes(needle)) return 1;
-  if (getCategory(p.category)?.name.toLowerCase().includes(needle)) return 2;
-  if (p.blurb.toLowerCase().includes(needle)) return 3;
-  if (p.materials.some((m) => m.toLowerCase().includes(needle))) return 4;
-  return -1;
-}
-
-/** Wrap the matched run so the shopper can see why a row came back. */
 function Highlight({ text, needle }) {
   const at = text.toLowerCase().indexOf(needle);
   if (!needle || at === -1) return text;
@@ -46,51 +31,63 @@ function Highlight({ text, needle }) {
 export default function SearchBox() {
   const router = useRouter();
   const [q, setQ] = useState("");
-  const [scope, setScope] = useState("");
+  const [scope, setScope] = useState(""); // category slug
   const [open, setOpen] = useState(false);
   const [scopeOpen, setScopeOpen] = useState(false);
   const [active, setActive] = useState(-1);
+  const [categories, setCategories] = useState([]);
+  const [products, setProducts] = useState([]);
   const wrap = useRef(null);
   const listId = useId();
 
   const needle = q.trim().toLowerCase();
-  const scopeLabel = scope ? getCategory(scope)?.name : "All Categories";
 
-  const { products, cats } = useMemo(() => {
-    if (needle.length < 1) return { products: [], cats: [] };
+  useEffect(() => {
+    fetchCategories().then(setCategories);
+  }, []);
 
-    const pool = scope ? PRODUCTS.filter((p) => p.category === scope) : PRODUCTS;
-    const products = pool
-      .map((p) => ({ p, s: scoreProduct(p, needle) }))
-      .filter((x) => x.s >= 0)
-      .sort((a, b) => a.s - b.s || b.p.reviews - a.p.reviews)
-      .slice(0, MAX_PRODUCTS)
-      .map((x) => x.p);
+  const scopes = useMemo(
+    () => [{ slug: "", name: "All Categories" }, ...categories],
+    [categories]
+  );
+  const scopeLabel =
+    categories.find((c) => c.slug === scope)?.name || "All Categories";
+  const scopeId = categories.find((c) => c.slug === scope)?.id || null;
 
-    const cats = scope
-      ? []
-      : CATEGORIES.filter((c) => c.name.toLowerCase().includes(needle)).slice(
-          0,
-          MAX_CATEGORIES
-        );
+  // debounced live product search
+  useEffect(() => {
+    if (needle.length < 1) {
+      setProducts([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      const params = { limit: MAX_PRODUCTS, search: q.trim() };
+      if (scopeId) params.category = scopeId;
+      fetchProducts(params).then(({ products }) =>
+        setProducts(products.slice(0, MAX_PRODUCTS))
+      );
+    }, 220);
+    return () => clearTimeout(t);
+  }, [needle, q, scopeId]);
 
-    return { products, cats };
-  }, [needle, scope]);
+  const catMatches = useMemo(() => {
+    if (!needle || scope) return [];
+    return categories
+      .filter((c) => c.name.toLowerCase().includes(needle))
+      .slice(0, 2);
+  }, [categories, needle, scope]);
 
-  // One flat list so the arrow keys can walk everything, ending on the
-  // "see all results" row.
   const rows = useMemo(
     () => [
       ...products.map((p) => ({ type: "product", key: p.slug, item: p })),
-      ...cats.map((c) => ({ type: "category", key: c.slug, item: c })),
+      ...catMatches.map((c) => ({ type: "category", key: c.slug, item: c })),
       ...(needle ? [{ type: "all", key: "__all" }] : []),
     ],
-    [products, cats, needle]
+    [products, catMatches, needle]
   );
 
   useEffect(() => setActive(-1), [needle]);
 
-  // Close both popovers on an outside click or Escape.
   useEffect(() => {
     if (!open && !scopeOpen) return;
     const close = () => {
@@ -154,9 +151,6 @@ export default function SearchBox() {
         }}
         className="flex h-12 items-center rounded-full border border-neon/40 bg-night-2 px-1"
       >
-        {/* A native <select> draws its list with the OS, which lands as a
-            white Windows menu on this dark bar and cannot be styled. This is
-            a real listbox so it can match the header. */}
         <div className="relative hidden shrink-0 sm:block">
           <button
             type="button"
@@ -182,9 +176,9 @@ export default function SearchBox() {
             <ul
               role="listbox"
               aria-label="Search within category"
-              className="absolute left-0 top-full z-50 mt-2 w-56 rounded-xl border border-neon/40 bg-night-2 p-1.5 shadow-[0_24px_60px_-20px_rgba(10,5,20,0.85)]"
+              className="absolute left-0 top-full z-50 mt-2 max-h-80 w-56 overflow-y-auto rounded-xl border border-neon/40 bg-night-2 p-1.5 shadow-[0_24px_60px_-20px_rgba(10,5,20,0.85)]"
             >
-              {SCOPES.map((c) => {
+              {scopes.map((c) => {
                 const on = scope === c.slug;
                 return (
                   <li key={c.slug || "all"}>
@@ -195,6 +189,8 @@ export default function SearchBox() {
                       onClick={() => {
                         setScope(c.slug);
                         setScopeOpen(false);
+                        // jumping scope from the dropdown also lands you on /shop
+                        if (c.slug) router.push(`/shop?category=${c.slug}`);
                       }}
                       className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold transition-colors ${
                         on
@@ -225,7 +221,7 @@ export default function SearchBox() {
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          placeholder="Search for dragons, lamps, caddies…"
+          placeholder="Search products…"
           aria-label="Search products"
           role="combobox"
           aria-expanded={showPanel}
@@ -244,18 +240,17 @@ export default function SearchBox() {
         </button>
       </form>
 
-      {/* ── Suggestions ── */}
       {showPanel && (
         <div
           id={listId}
           role="listbox"
           className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-line bg-shell shadow-[0_24px_60px_-20px_rgba(10,5,20,0.6)]"
         >
-          {rows.length === 1 ? (
+          {rows.length <= 1 && (
             <p className="px-4 py-6 text-center text-sm text-ink-3">
               No products match “{q.trim()}”. Press Enter to search anyway.
             </p>
-          ) : null}
+          )}
 
           {products.length > 0 && (
             <ul className="py-1.5">
@@ -284,7 +279,7 @@ export default function SearchBox() {
                         <Highlight text={p.name} needle={needle} />
                       </span>
                       <span className="block truncate text-xs text-ink-3">
-                        {getCategory(p.category)?.name}
+                        {p.categoryName}
                       </span>
                     </span>
                     <span className="shrink-0 font-display text-sm font-extrabold text-ink">
@@ -296,9 +291,9 @@ export default function SearchBox() {
             </ul>
           )}
 
-          {cats.length > 0 && (
+          {catMatches.length > 0 && (
             <ul className="border-t border-line py-1.5">
-              {cats.map((c, j) => {
+              {catMatches.map((c, j) => {
                 const i = products.length + j;
                 return (
                   <li key={c.slug}>

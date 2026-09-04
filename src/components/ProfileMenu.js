@@ -1,27 +1,59 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { UserCircle, CaretDown, SignOut, PencilSimple } from "@phosphor-icons/react";
+import Image from "next/image";
+import Link from "next/link";
+import {
+  UserCircle,
+  CaretDown,
+  SignOut,
+  SquaresFour,
+  Package,
+  PencilSimple,
+  X,
+} from "@phosphor-icons/react";
 import { gsap, useGSAP, prefersReducedMotion } from "@/lib/gsap";
-import { useUser } from "@/context/UserContext";
+import { useUser, useAuthStore } from "@/store/authStore";
+import OtpInput from "@/components/OtpInput";
 
-/**
- * Header identity. Signed out it is a Login button; signed in it becomes
- * "Hey Harish / Good morning" with a small menu.
- *
- * There is no auth backend yet, so "logging in" is completing a profile —
- * the name is captured once and kept in localStorage.
- */
+const CLEAN_PHONE = (v) => v.replace(/\D/g, "").slice(0, 10);
+
 export default function ProfileMenu() {
-  const { isSignedIn, firstName, initial, greeting, signIn, signOut } = useUser();
+  const { isSignedIn, isAdmin, user, firstName, initial, greeting } = useUser();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  // server + first client render always show "Login"; flip after mount
+  const signedIn = mounted && isSignedIn;
+  const requestLoginOtp = useAuthStore((s) => s.requestLoginOtp);
+  const verifyLoginOtp = useAuthStore((s) => s.verifyLoginOtp);
+  const requestRegisterOtp = useAuthStore((s) => s.requestRegisterOtp);
+  const verifyRegisterOtp = useAuthStore((s) => s.verifyRegisterOtp);
+  const logout = useAuthStore((s) => s.logout);
+  const loading = useAuthStore((s) => s.loading);
+
   const [modalOpen, setModalOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [name, setName] = useState("");
+  const [mode, setMode] = useState("login"); // login | register
+  const [step, setStep] = useState("phone"); // phone | otp
   const [phone, setPhone] = useState("");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [err, setErr] = useState("");
   const wrap = useRef(null);
   const greetRef = useRef(null);
 
-  // Close the menu on an outside click or Escape.
+  // open the modal when something else asks for auth (e.g. add-to-cart)
+  useEffect(() => {
+    const onReq = () => {
+      setModalOpen(true);
+      setStep("phone");
+      setErr("");
+    };
+    window.addEventListener("oros:require-auth", onReq);
+    return () => window.removeEventListener("oros:require-auth", onReq);
+  }, []);
+
   useEffect(() => {
     if (!menuOpen) return;
     const onDown = (e) => {
@@ -36,42 +68,94 @@ export default function ProfileMenu() {
     };
   }, [menuOpen]);
 
-  // Greet on arrival, once the name is known.
   useGSAP(
     () => {
-      if (!isSignedIn || !greetRef.current || prefersReducedMotion()) return;
+      if (!signedIn || !greetRef.current || prefersReducedMotion()) return;
       gsap.fromTo(
         greetRef.current,
         { autoAlpha: 0, x: 10 },
         { autoAlpha: 1, x: 0, duration: 0.6, ease: "expo.out" }
       );
     },
-    { dependencies: [isSignedIn, firstName] }
+    { dependencies: [signedIn, firstName] }
   );
 
-  const submit = (e) => {
-    e.preventDefault();
-    signIn(name, phone);
-    setModalOpen(false);
-    setName("");
+  const reset = () => {
+    setStep("phone");
     setPhone("");
+    setName("");
+    setEmail("");
+    setOtp("");
+    setErr("");
+  };
+
+  const sendOtp = async (e) => {
+    e.preventDefault();
+    setErr("");
+    if (phone.length !== 10) return setErr("Enter a valid 10-digit number");
+    try {
+      if (mode === "register") {
+        if (!name.trim() || !email.trim())
+          return setErr("Name and email are required");
+        await requestRegisterOtp({ name: name.trim(), email: email.trim(), phone });
+      } else {
+        await requestLoginOtp(phone);
+      }
+      setStep("otp");
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+
+  const confirmOtp = async (e, code) => {
+    e?.preventDefault?.();
+    setErr("");
+    const otpValue = code || otp;
+    if (otpValue.length < 6) return setErr("Enter the 6-digit code");
+    try {
+      if (mode === "register") {
+        await verifyRegisterOtp({
+          name: name.trim(),
+          email: email.trim(),
+          phone,
+          otp: otpValue,
+        });
+        // registration verified — now the login OTP was sent, verify it too
+        await verifyLoginOtp(phone, otpValue);
+      } else {
+        await verifyLoginOtp(phone, otpValue);
+      }
+      setModalOpen(false);
+      reset();
+    } catch (e) {
+      setErr(e.message);
+    }
   };
 
   return (
     <>
       <div ref={wrap} className="relative">
-        {isSignedIn ? (
+        {signedIn ? (
           <button
             onClick={() => setMenuOpen((o) => !o)}
             aria-expanded={menuOpen}
             aria-haspopup="menu"
             className="flex items-center gap-2.5 rounded-xl px-2 py-2 transition-colors hover:bg-white/5"
           >
-            <span
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-neon/50 text-neon-2"
-              title={initial}
-            >
-              <UserCircle size={20} />
+            <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full border border-neon/50 text-neon-2">
+              {user?.profileImage ? (
+                <Image
+                  src={user.profileImage}
+                  alt={firstName}
+                  width={36}
+                  height={36}
+                  className="h-full w-full object-cover"
+                />
+              ) : initial ? (
+                <span className="text-sm font-bold">{initial}</span>
+              ) : (
+                <UserCircle size={20} />
+              )}
             </span>
             <span ref={greetRef} className="hidden text-left leading-tight sm:block">
               <span className="block text-sm font-bold text-white">
@@ -90,7 +174,11 @@ export default function ProfileMenu() {
           </button>
         ) : (
           <button
-            onClick={() => setModalOpen(true)}
+            onClick={() => {
+              setMode("login");
+              reset();
+              setModalOpen(true);
+            }}
             className="flex items-center gap-2.5 rounded-xl px-2 py-2 transition-colors hover:bg-white/5"
           >
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-neon/50 text-neon-2">
@@ -103,44 +191,117 @@ export default function ProfileMenu() {
           </button>
         )}
 
-        {/* ── Menu ── */}
-        {menuOpen && isSignedIn && (
-          <div
-            role="menu"
-            className="absolute left-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-xl border border-line bg-shell shadow-[0_18px_40px_-16px_rgba(43,27,77,0.45)]"
-          >
-            <div className="border-b border-line px-4 py-3">
-              <p className="text-sm font-bold text-ink">Hey {firstName}</p>
-              <p className="text-xs text-ink-3">{greeting} — good to see you</p>
-            </div>
-            <button
-              role="menuitem"
-              onClick={() => {
-                setName(firstName);
-                setMenuOpen(false);
-                setModalOpen(true);
-              }}
-              className="flex w-full items-center gap-2.5 px-4 py-3 text-sm font-semibold text-ink-2 transition-colors hover:bg-canvas hover:text-ink"
-            >
-              <PencilSimple size={15} />
-              Edit profile
-            </button>
-            <button
-              role="menuitem"
-              onClick={() => {
-                signOut();
-                setMenuOpen(false);
-              }}
-              className="flex w-full items-center gap-2.5 border-t border-line px-4 py-3 text-sm font-semibold text-flame transition-colors hover:bg-flame-lt"
-            >
-              <SignOut size={15} />
-              Sign out
-            </button>
-          </div>
-        )}
       </div>
 
-      {/* ── Profile modal ── */}
+      {/* ── Account slide-over (right) ── */}
+      {signedIn && (
+        <div
+          className="fixed inset-0 z-[75]"
+          style={{ pointerEvents: menuOpen ? "auto" : "none" }}
+          aria-hidden={!menuOpen}
+          inert={!menuOpen}
+        >
+          <div
+            onClick={() => setMenuOpen(false)}
+            className={`absolute inset-0 bg-ink/50 backdrop-blur-[2px] transition-opacity duration-300 ${
+              menuOpen ? "opacity-100" : "opacity-0"
+            }`}
+          />
+          <aside
+            role="dialog"
+            aria-label="Your account"
+            className={`absolute right-0 top-0 flex h-full w-full max-w-[360px] flex-col bg-shell shadow-[-16px_0_48px_-16px_rgba(43,27,77,0.4)] transition-transform duration-300 ease-out ${
+              menuOpen ? "translate-x-0" : "translate-x-full"
+            }`}
+          >
+            <header className="flex items-center gap-3 border-b border-line px-5 py-5">
+              <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full border border-line bg-canvas text-ink">
+                {user?.profileImage ? (
+                  <Image
+                    src={user.profileImage}
+                    alt={firstName}
+                    width={48}
+                    height={48}
+                    className="h-full w-full object-cover"
+                  />
+                ) : initial ? (
+                  <span className="font-display text-lg font-extrabold">
+                    {initial}
+                  </span>
+                ) : (
+                  <UserCircle size={26} />
+                )}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-display text-lg font-extrabold text-ink">
+                  {user?.name || firstName}
+                </p>
+                <p className="truncate text-xs text-ink-3">
+                  {user?.phone || user?.email}
+                </p>
+              </div>
+              <button
+                onClick={() => setMenuOpen(false)}
+                aria-label="Close"
+                className="grid h-9 w-9 place-items-center rounded-full text-ink-3 transition-colors hover:bg-canvas hover:text-ink"
+              >
+                <X size={18} weight="bold" />
+              </button>
+            </header>
+
+            <nav className="flex-1 overflow-y-auto p-3">
+              {(isAdmin
+                ? [
+                    { href: "/admin", label: "Admin panel", icon: SquaresFour },
+                    { href: "/admin?tab=orders", label: "Orders", icon: Package },
+                    {
+                      href: "/account?tab=profile",
+                      label: "Edit profile",
+                      icon: PencilSimple,
+                    },
+                  ]
+                : [
+                    { href: "/account", label: "Dashboard", icon: SquaresFour },
+                    {
+                      href: "/account?tab=orders",
+                      label: "My orders",
+                      icon: Package,
+                    },
+                    {
+                      href: "/account?tab=profile",
+                      label: "Edit profile",
+                      icon: PencilSimple,
+                    },
+                  ]
+              ).map(({ href, label, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-3 rounded-xl px-4 py-3.5 text-sm font-bold text-ink-2 transition-colors hover:bg-canvas hover:text-ink"
+                >
+                  <Icon size={17} />
+                  {label}
+                </Link>
+              ))}
+            </nav>
+
+            <div className="border-t border-line p-3">
+              <button
+                onClick={() => {
+                  logout();
+                  setMenuOpen(false);
+                }}
+                className="flex w-full items-center gap-3 rounded-xl px-4 py-3.5 text-sm font-bold text-flame transition-colors hover:bg-flame-lt"
+              >
+                <SignOut size={17} />
+                Sign out
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+
       {modalOpen && (
         <div
           className="fixed inset-0 z-[80] grid place-items-center bg-ink/50 p-4 backdrop-blur-[2px]"
@@ -148,67 +309,115 @@ export default function ProfileMenu() {
         >
           <div
             role="dialog"
-            aria-label="Complete your profile"
+            aria-label="Sign in"
             className="w-full max-w-sm rounded-2xl bg-shell p-6 shadow-2xl"
           >
             <h2 className="font-display text-xl font-extrabold text-ink">
-              Complete your profile
+              {step === "otp"
+                ? "Enter the code"
+                : mode === "register"
+                  ? "Create your account"
+                  : "Login with your mobile"}
             </h2>
             <p className="mt-1.5 text-sm text-ink-3">
-              Tell us your name so we can greet you properly and keep your
-              orders together.
+              {step === "otp"
+                ? `We sent a 6-digit code to +91 ${phone}`
+                : "We'll text you a one-time code — no password."}
             </p>
 
-            <form onSubmit={submit} className="mt-5 space-y-4">
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-ink-4">
-                  Your name
-                </span>
-                <input
-                  autoFocus
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Harish"
-                  className="h-11 w-full rounded-lg border border-line px-3.5 text-sm text-ink outline-none transition-colors focus:border-flame"
-                />
-              </label>
+            {step === "phone" ? (
+              <form onSubmit={sendOtp} className="mt-5 space-y-3">
+                {mode === "register" && (
+                  <>
+                    <input
+                      required
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Full name"
+                      className="h-11 w-full rounded-lg border border-line px-3.5 text-sm text-ink outline-none focus:border-flame"
+                    />
+                    <input
+                      required
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="Email"
+                      className="h-11 w-full rounded-lg border border-line px-3.5 text-sm text-ink outline-none focus:border-flame"
+                    />
+                  </>
+                )}
+                <div className="flex h-11 items-center rounded-lg border border-line px-3.5 focus-within:border-flame">
+                  <span className="text-sm font-semibold text-ink-3">+91</span>
+                  <input
+                    autoFocus
+                    value={phone}
+                    onChange={(e) => setPhone(CLEAN_PHONE(e.target.value))}
+                    inputMode="numeric"
+                    placeholder="9876543210"
+                    className="ml-2 h-full flex-1 bg-transparent text-sm text-ink outline-none"
+                  />
+                </div>
 
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-ink-4">
-                  Mobile <span className="font-medium normal-case">(optional)</span>
-                </span>
-                <input
-                  value={phone}
-                  onChange={(e) =>
-                    setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))
-                  }
-                  inputMode="numeric"
-                  placeholder="9876543210"
-                  className="h-11 w-full rounded-lg border border-line px-3.5 text-sm text-ink outline-none transition-colors focus:border-flame"
-                />
-              </label>
+                {err && <p className="text-xs font-semibold text-flame">{err}</p>}
 
-              <div className="flex gap-2.5 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setModalOpen(false)}
-                  className="flex-1 rounded-lg border border-line py-3 text-sm font-bold text-ink-2 transition-colors hover:border-ink-5"
-                >
-                  Not now
-                </button>
                 <button
                   type="submit"
-                  className="flex-[2] rounded-lg bg-flame py-3 text-sm font-extrabold uppercase tracking-wide text-white transition-colors hover:bg-flame-dk"
+                  disabled={loading}
+                  className="w-full rounded-lg bg-flame py-3 text-sm font-extrabold uppercase tracking-wide text-white transition-colors hover:bg-flame-dk disabled:opacity-60"
                 >
-                  Save & continue
+                  {loading ? "Sending…" : "Send code"}
                 </button>
-              </div>
-            </form>
 
-            <p className="mt-4 text-center text-[11px] text-ink-4">
-              Stored on this device only — no account is created yet.
-            </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode(mode === "login" ? "register" : "login");
+                    setErr("");
+                  }}
+                  className="w-full text-center text-xs font-bold text-flame hover:underline"
+                >
+                  {mode === "login"
+                    ? "New here? Create an account"
+                    : "Already have an account? Login"}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={confirmOtp} className="mt-5 space-y-4">
+                <OtpInput
+                  value={otp}
+                  onChange={(v) => {
+                    setOtp(v);
+                    setErr("");
+                  }}
+                  onComplete={(v) => confirmOtp(undefined, v)}
+                />
+
+                {err && (
+                  <p className="text-center text-xs font-semibold text-flame">
+                    {err}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full rounded-lg bg-flame py-3.5 text-sm font-extrabold uppercase tracking-wide text-white transition-colors hover:bg-flame-dk disabled:opacity-60"
+                >
+                  {loading ? "Verifying…" : "Verify & continue"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep("phone");
+                    setOtp("");
+                    setErr("");
+                  }}
+                  className="w-full text-center text-xs font-bold text-ink-3 hover:text-ink"
+                >
+                  ← Change number
+                </button>
+              </form>
+            )}
           </div>
         </div>
       )}

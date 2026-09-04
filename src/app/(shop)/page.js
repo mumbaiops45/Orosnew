@@ -1,91 +1,121 @@
 import Link from "next/link";
-import { ArrowRight, Percent } from "@phosphor-icons/react/ssr";
+import { ArrowRight, Percent, Tag } from "@phosphor-icons/react/ssr";
 import BannerCarousel from "@/components/BannerCarousel";
 import Rail from "@/components/Rail";
 import ProductImage from "@/components/ProductImage";
+import { formatINR } from "@/lib/format";
 import {
-  PRODUCTS,
-  CATEGORIES,
-  formatINR,
-  discountPct,
-  categoryImage,
-} from "@/lib/products";
+  fetchProducts,
+  fetchBestSellers,
+  fetchCategories,
+  fetchCoupons,
+} from "@/lib/catalog";
 
-export default function Home() {
-  const bestsellers = PRODUCTS.filter((p) => p.bestseller);
-  const featured = PRODUCTS.filter((p) => p.featured);
-  const desk = PRODUCTS.filter((p) => p.category === "desk");
-  const deals = [...PRODUCTS].sort((a, b) => discountPct(b) - discountPct(a)).slice(0, 6);
+export const dynamic = "force-dynamic";
+
+function couponHeadline(c) {
+  if (c.discountType === "PERCENTAGE") return `${c.discountValue}% off`;
+  return `${formatINR(c.discountValue)} off`;
+}
+
+export default async function Home() {
+  const [bestsellers, pool, categories, coupons] = await Promise.all([
+    fetchBestSellers(12),
+    fetchProducts({ limit: 40 }),
+    fetchCategories(),
+    fetchCoupons(),
+  ]);
+
+  const allProducts = pool.products;
+
+  const newest = [...allProducts]
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt || 0).getTime() -
+        new Date(a.createdAt || 0).getTime()
+    )
+    .slice(0, 12);
+
+  const bestOf = allProducts.slice(0, 12);
+  const featuredBestsellers = bestsellers.length ? bestsellers : bestOf;
 
   return (
     <div className="space-y-3 pb-3">
       <BannerCarousel />
 
-      <Rail
-        title="Bestsellers this month"
-        subtitle="What everyone else is printing"
-        products={bestsellers}
-        href="/shop"
-      />
+      {featuredBestsellers.length > 0 && (
+        <Rail
+          title="Bestsellers this month"
+          subtitle="What everyone else is printing"
+          products={featuredBestsellers}
+          href="/shop"
+        />
+      )}
 
-      {/* ── Deals grid ── */}
-      <section className="bg-shell">
-        <div className="mx-auto max-w-[1440px] px-4 lg:px-6">
-          <div className="flex items-center justify-between gap-4 py-5">
-            <div className="flex items-center gap-2.5">
-              <span className="grid h-8 w-8 place-items-center rounded-full bg-gold-lt">
-                <Percent size={16} className="text-gold-dk" />
-              </span>
-              <div>
-                <h2 className="font-display text-xl font-extrabold tracking-tight text-ink lg:text-2xl">
-                  Biggest discounts
-                </h2>
-                <p className="mt-0.5 text-xs text-ink-3 lg:text-sm">
-                  Ends when the print queue clears
-                </p>
-              </div>
-            </div>
-            <Link
-              href="/shop?sort=discount"
-              className="shrink-0 rounded-md bg-flame px-5 py-2.5 text-xs font-extrabold uppercase tracking-wide text-white transition-colors hover:bg-flame-dk lg:text-sm"
-            >
-              View all
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 pb-6 sm:grid-cols-3 lg:grid-cols-6">
-            {deals.map((p) => (
-              <Link
-                key={p.slug}
-                href={`/shop/${p.slug}`}
-                className="group rounded-lg border border-line p-3 text-center transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_10px_28px_-14px_rgba(43,27,77,0.4)]"
-              >
-                <div className="relative mb-2 aspect-square overflow-hidden rounded-md bg-canvas">
-                  <ProductImage
-                    src={p.image}
-                    alt={p.name}
-                    sizes="(max-width: 640px) 50vw, 16vw"
-                    overlay
-                    imgClassName="transition-transform duration-500 group-hover:scale-105"
-                  />
+      {/* ── Biggest discounts — live coupons ── */}
+      {coupons.length > 0 && (
+        <section className="bg-shell">
+          <div className="mx-auto max-w-[1440px] px-4 lg:px-6">
+            <div className="flex items-center justify-between gap-4 py-5">
+              <div className="flex items-center gap-2.5">
+                <span className="grid h-8 w-8 place-items-center rounded-full bg-gold-lt">
+                  <Percent size={16} className="text-gold-dk" />
+                </span>
+                <div>
+                  <h2 className="font-display text-xl font-extrabold tracking-tight text-ink lg:text-2xl">
+                    Biggest discounts
+                  </h2>
+                  <p className="mt-0.5 text-xs text-ink-3 lg:text-sm">
+                    Apply these codes at checkout
+                  </p>
                 </div>
-                <p className="line-clamp-1 text-sm font-bold text-ink">{p.name}</p>
-                <p className="mt-1 text-base font-extrabold text-leaf">
-                  {discountPct(p)}% off
-                </p>
-                <p className="text-xs text-ink-3">from {formatINR(p.price)}</p>
+              </div>
+              <Link
+                href="/shop"
+                className="shrink-0 rounded-md bg-flame px-5 py-2.5 text-xs font-extrabold uppercase tracking-wide text-white transition-colors hover:bg-flame-dk lg:text-sm"
+              >
+                Shop now
               </Link>
-            ))}
-          </div>
-        </div>
-      </section>
+            </div>
 
-      <Rail
-        title="Best of desk"
-        subtitle="Caddies, organisers and displays that actually fit"
-        products={desk}
-        href="/shop?category=desk"
-      />
+            <div className="grid grid-cols-2 gap-3 pb-6 sm:grid-cols-3 lg:grid-cols-4">
+              {coupons.slice(0, 8).map((c) => (
+                <div
+                  key={c._id || c.code}
+                  className="relative overflow-hidden rounded-lg border border-dashed border-flame/40 bg-flame-lt p-4"
+                >
+                  <div className="flex items-center gap-2 text-flame">
+                    <Tag size={15} weight="fill" />
+                    <span className="font-display text-lg font-extrabold">
+                      {couponHeadline(c)}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs font-semibold text-ink-2">
+                    Code{" "}
+                    <span className="rounded bg-white px-1.5 py-0.5 font-mono font-bold text-ink">
+                      {c.code}
+                    </span>
+                  </p>
+                  {c.minOrderValue > 0 && (
+                    <p className="mt-1 text-[11px] text-ink-3">
+                      On orders over {formatINR(c.minOrderValue)}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {bestOf.length > 0 && (
+        <Rail
+          title="Best of desk"
+          subtitle="Everything we print, in one place"
+          products={bestOf}
+          href="/shop"
+        />
+      )}
 
       {/* ── Bulk strip ── */}
       <section className="bg-shell">
@@ -123,31 +153,32 @@ export default function Home() {
         </div>
       </section>
 
-      <Rail
-        title="New & noteworthy"
-        subtitle="Fresh off the print farm"
-        products={featured}
-        href="/shop"
-      />
+      {newest.length > 0 && (
+        <Rail
+          title="New & noteworthy"
+          subtitle="Fresh off the print farm"
+          products={newest}
+          href="/shop"
+        />
+      )}
 
       {/* ── Category tiles ── */}
-      <section className="bg-shell">
-        <div className="mx-auto max-w-[1440px] px-4 lg:px-6">
-          <h2 className="py-5 font-display text-xl font-extrabold tracking-tight text-ink lg:text-2xl">
-            Shop by category
-          </h2>
-          <div className="grid grid-cols-2 gap-3 pb-8 sm:grid-cols-3 lg:grid-cols-6">
-            {CATEGORIES.map((c) => {
-              const count = PRODUCTS.filter((p) => p.category === c.slug).length;
-              return (
+      {categories.length > 0 && (
+        <section className="bg-shell">
+          <div className="mx-auto max-w-[1440px] px-4 lg:px-6">
+            <h2 className="py-5 font-display text-xl font-extrabold tracking-tight text-ink lg:text-2xl">
+              Shop by category
+            </h2>
+            <div className="grid grid-cols-2 gap-3 pb-8 sm:grid-cols-3 lg:grid-cols-6">
+              {categories.map((c) => (
                 <Link
                   key={c.slug}
                   href={`/shop?category=${c.slug}`}
                   className="group overflow-hidden rounded-lg border border-line transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_10px_28px_-14px_rgba(43,27,77,0.4)]"
                 >
-                  <div className="relative aspect-4/3 overflow-hidden">
+                  <div className="relative aspect-4/3 overflow-hidden bg-canvas">
                     <ProductImage
-                      src={categoryImage(c.slug)}
+                      src={c.image}
                       alt={c.name}
                       sizes="(max-width: 640px) 50vw, 16vw"
                       overlay
@@ -155,19 +186,21 @@ export default function Home() {
                     />
                   </div>
                   <div className="p-3">
-                    <p className="text-sm font-bold text-ink group-hover:text-flame">
+                    <p className="line-clamp-1 text-sm font-bold text-ink group-hover:text-flame">
                       {c.name}
                     </p>
-                    <p className="text-xs text-ink-3">
-                      {count} product{count === 1 ? "" : "s"}
-                    </p>
+                    {c.description && (
+                      <p className="line-clamp-1 text-xs text-ink-3">
+                        {c.description}
+                      </p>
+                    )}
                   </div>
                 </Link>
-              );
-            })}
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
     </div>
   );
 }
