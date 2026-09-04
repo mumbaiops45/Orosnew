@@ -67,6 +67,8 @@ export const createMedia = (productId, formData) =>
   api.post(`/product/${productId}/media`, formData, {
     headers: { "Content-Type": "multipart/form-data" },
   });
+export const updateMedia = (productId, mediaId, body) =>
+  api.put(`/product/${productId}/media/${mediaId}`, body);
 export const deleteMedia = (productId, mediaId) =>
   api.delete(`/product/${productId}/media/${mediaId}`);
 

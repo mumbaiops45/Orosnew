@@ -84,6 +84,10 @@ export const useAuthStore = create(
           const data = await authApi.adminLogin({ email, password });
           tokenStore.set(data.token);
           set({ user: data.user, token: data.token, loading: false });
+          // the cart is customer-only — an admin session must not carry one
+          try {
+            useCartStore.setState({ lines: [], drawerOpen: false });
+          } catch {}
           return data.user;
         } catch (e) {
           set({ loading: false, error: e.message });
@@ -160,6 +164,8 @@ export function useUser() {
     isSignedIn: !!user,
     role,
     isAdmin: ["admin", "staff", "superAdmin"].includes(role),
+    // storefront customer — the only role the cart / checkout serve
+    isCustomer: role === "user",
     firstName,
     initial: firstName.charAt(0).toUpperCase(),
     greeting: greetingFor(),

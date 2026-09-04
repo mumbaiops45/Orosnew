@@ -17,6 +17,7 @@ import {
   SignOut,
   List,
   Image as ImageIcon,
+  FileText,
 } from "@phosphor-icons/react";
 import { useAuthStore, useUser } from "@/store/authStore";
 import {
@@ -30,11 +31,13 @@ import {
   UsersTab,
   ManualOrder,
   Banners,
+  Quotations,
 } from "@/components/admin/tabs";
 
 const TABS = [
-  { id: "overview", label: "Overview", icon: ChartBar, Comp: Overview },
+  { id: "overview", label: "Dashboard", icon: ChartBar, Comp: Overview },
   { id: "orders", label: "Orders", icon: Package, Comp: Orders },
+  { id: "quotations", label: "Quotations", icon: FileText, Comp: Quotations },
   { id: "payments", label: "Payments", icon: CreditCard, Comp: Payments },
   { id: "products", label: "Products", icon: Cube, Comp: Products },
   { id: "categories", label: "Categories", icon: SquaresFour, Comp: Categories },
@@ -76,7 +79,10 @@ export default function AdminClient() {
           navOpen ? "flex translate-x-0" : "hidden -translate-x-full"
         }`}
       >
-        <div className="flex items-center gap-2.5 border-b border-line px-5 py-4">
+        <Link
+          href="/"
+          className="flex items-center gap-2.5 border-b border-line px-5 py-4 transition-colors hover:bg-canvas"
+        >
           <Image
             src="/brand/oros-logo.jpg"
             alt="OROS"
@@ -85,7 +91,7 @@ export default function AdminClient() {
             className="h-8 w-8 rounded-lg object-contain"
           />
           <span className="font-display text-base font-extrabold">Admin</span>
-        </div>
+        </Link>
         <nav className="flex-1 overflow-y-auto p-3">
           {TABS.map(({ id, label, icon: Icon }) => (
             <Link

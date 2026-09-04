@@ -10,6 +10,8 @@ import * as categoryApi from "@/api/category.api";
 import * as subcategoryApi from "@/api/subcategory.api";
 import * as couponApi from "@/api/coupon.api";
 import * as userApi from "@/api/user.api";
+import * as bannerApi from "@/api/banner.api";
+import * as quotationApi from "@/api/quotation.api";
 
 /* ══════════ shared primitives ══════════ */
 
@@ -142,39 +144,75 @@ function Table({ head, children }) {
 const iconBtn =
   "grid h-8 w-8 place-items-center rounded-md border border-line text-ink-3 hover:border-ink-5 hover:text-ink";
 
-/* ══════════ OVERVIEW ══════════ */
+/**
+ * Prev / Next pager. Pass `totalPages` when the endpoint reports it
+ * (/product does); otherwise pass `hasNext` — true while the last page
+ * came back full, so there may be more.
+ */
+function Pager({ page, setPage, totalPages, hasNext }) {
+  const canNext = totalPages ? page < totalPages : !!hasNext;
+  if (page <= 1 && !canNext) return null;
+  return (
+    <div className="flex items-center gap-2 pt-1">
+      <button
+        disabled={page <= 1}
+        onClick={() => setPage((p) => Math.max(1, p - 1))}
+        className="rounded-md border border-line px-3 py-1.5 text-xs font-bold disabled:opacity-40"
+      >
+        Prev
+      </button>
+      <span className="text-xs text-ink-3">
+        Page {page}
+        {totalPages ? ` of ${totalPages}` : ""}
+      </span>
+      <button
+        disabled={!canNext}
+        onClick={() => setPage((p) => p + 1)}
+        className="rounded-md border border-line px-3 py-1.5 text-xs font-bold disabled:opacity-40"
+      >
+        Next
+      </button>
+    </div>
+  );
+}
+
+/* ══════════ DASHBOARD ══════════ */
 
 const isoDay = (d) => new Date(d).toISOString().slice(0, 10);
 
 export function Overview() {
-  const [from, setFrom] = useState(
-    isoDay(Date.now() - 29 * 864e5)
-  );
+  const [from, setFrom] = useState(isoDay(Date.now() - 29 * 864e5));
   const [to, setTo] = useState(isoDay(Date.now()));
+  const [groupBy, setGroupBy] = useState("day");
+
+  // one call — the backend fans out to every analytics service
   const { data, loading, error } = useAsync(
-    () => analyticsApi.getDashboard({ from, to }),
-    [from, to]
+    () => analyticsApi.getDashboard({ from, to, groupBy }),
+    [from, to, groupBy]
   );
 
   const ov = data?.overview || {};
-  const cards = [
-    ["Revenue", formatINR(ov.revenue?.total || 0), ov.revenue?.growthPercent],
-    ["Orders", ov.orders?.total ?? 0, ov.orders?.growthPercent],
-    [
-      "Avg order value",
-      formatINR(ov.averageOrderValue?.value || 0),
-      ov.averageOrderValue?.growthPercent,
-    ],
-    ["Pending payment", ov.orders?.pendingPayment ?? 0, null],
-    ["Cancelled", ov.orders?.cancelled ?? 0, null],
-    ["New customers", ov.customers?.new ?? ov.customers?.total ?? 0, null],
-  ];
+  const trend = data?.salesTrend || {};
+  const breakdown = data?.orderBreakdown || {};
+  const quotes = data?.quotations || {};
+  const buckets = trend.buckets || [];
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-8">
       <div className="flex flex-wrap items-end gap-3">
         <Field label="From" type="date" value={from} onChange={setFrom} />
         <Field label="To" type="date" value={to} onChange={setTo} />
+        <Field
+          label="Group by"
+          value={groupBy}
+          onChange={setGroupBy}
+          options={[
+            { value: "day", label: "Day" },
+            { value: "week", label: "Week" },
+            { value: "month", label: "Month" },
+            { value: "year", label: "Year" },
+          ]}
+        />
       </div>
 
       <Msg error={error} />
@@ -182,66 +220,267 @@ export function Overview() {
         <p className="text-sm text-ink-3">Loading analytics…</p>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            {cards.map(([label, value, growth]) => (
-              <div
-                key={label}
-                className="rounded-xl border border-line bg-shell p-4"
-              >
-                <p className="text-xs font-bold uppercase tracking-wide text-ink-4">
-                  {label}
-                </p>
-                <p className="mt-1 font-display text-xl font-extrabold text-ink">
-                  {value}
-                </p>
-                {growth != null && (
-                  <p
-                    className={`text-xs font-bold ${
-                      growth >= 0 ? "text-leaf" : "text-flame"
-                    }`}
-                  >
-                    {growth >= 0 ? "▲" : "▼"} {Math.abs(growth)}%
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
+          {/* ── 1. SALES & REVENUE ── */}
+          <DashSection title="Sales & revenue">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Kpi
+                label="Revenue"
+                value={formatINR(ov.revenue?.total || 0)}
+                growth={ov.revenue?.growthPercent}
+              />
+              <Kpi
+                label="Orders"
+                value={ov.orders?.total ?? 0}
+                growth={ov.orders?.growthPercent}
+              />
+              <Kpi
+                label="Avg order value"
+                value={formatINR(ov.averageOrderValue?.value || 0)}
+                growth={ov.averageOrderValue?.growthPercent}
+              />
+              <Kpi
+                label="Units sold"
+                value={ov.items?.unitsSold ?? trend.totals?.unitsSold ?? 0}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <Kpi label="Subtotal" value={formatINR(ov.revenue?.subtotal || 0)} small />
+              <Kpi label="Tax" value={formatINR(ov.revenue?.tax || 0)} small />
+              <Kpi label="Shipping" value={formatINR(ov.revenue?.shipping || 0)} small />
+              <Kpi
+                label="Prev revenue"
+                value={formatINR(ov.revenue?.previous || 0)}
+                small
+              />
+            </div>
+            <MiniBars
+              title={`Revenue per ${trend.groupBy || groupBy}`}
+              buckets={buckets}
+              valueKey="revenue"
+              format={formatINR}
+            />
+            <MiniBars
+              title={`Orders per ${trend.groupBy || groupBy}`}
+              buckets={buckets}
+              valueKey="orders"
+              format={(v) => v}
+            />
+            {trend.bestPeriod && (
+              <p className="text-xs text-ink-3">
+                Best {trend.groupBy || groupBy}:{" "}
+                <b>{trend.bestPeriod.period}</b> —{" "}
+                {formatINR(trend.bestPeriod.revenue)} from{" "}
+                {trend.bestPeriod.orders} orders
+              </p>
+            )}
+          </DashSection>
 
-          <TopList
-            title="Top products"
-            rows={
-              data?.topProducts?.products ||
-              data?.topProducts ||
-              []
-            }
-            render={(p) => [
-              p.name || p.nameSnapshot || p._id,
-              formatINR(p.revenue || p.totalRevenue || 0),
-              `${p.qty || p.unitsSold || p.totalQty || 0} sold`,
-            ]}
-          />
-          <TopList
-            title="Top customers"
-            rows={data?.topCustomers?.customers || data?.topCustomers || []}
-            render={(c) => [
-              c.name || c.user?.name || c._id,
-              formatINR(c.revenue || c.totalSpent || 0),
-              `${c.orders || c.orderCount || 0} orders`,
-            ]}
-          />
+          {/* ── 2. ORDER BREAKDOWN ── */}
+          <DashSection title="Order breakdown">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Breakdown title="By status" rows={breakdown.byStatus} />
+              <Breakdown title="By source" rows={breakdown.bySource} />
+              <Breakdown title="By payment status" rows={breakdown.byPaymentStatus} />
+              <Breakdown title="By payment method" rows={breakdown.byPaymentMethod} />
+            </div>
+          </DashSection>
+
+          {/* ── 3. QUOTATIONS ── */}
+          <DashSection title="Quotations">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <Kpi label="Quotations" value={quotes.total?.quotations ?? 0} small />
+              <Kpi
+                label="Quoted value"
+                value={formatINR(quotes.total?.quotedValue || 0)}
+                small
+              />
+              <Kpi label="Converted" value={quotes.total?.converted ?? 0} small />
+              <Kpi
+                label="Conversion"
+                value={`${quotes.total?.conversionRatePercent ?? 0}%`}
+                small
+              />
+            </div>
+            <Breakdown
+              title="By status"
+              rows={(quotes.byStatus || []).map((r) => ({
+                key: r.status,
+                orders: r.count,
+                revenue: r.value,
+              }))}
+            />
+          </DashSection>
+
+          {/* ── 4. TOP PRODUCTS ── */}
+          <DashSection title="Top products">
+            <TopList
+              rows={data?.topProducts?.products || []}
+              render={(p) => [
+                p.name || p.productId,
+                formatINR(p.revenue || 0),
+                `${p.unitsSold || 0} sold · ${p.orderCount || 0} orders`,
+              ]}
+            />
+          </DashSection>
+
+          {/* ── 5. TOP CATEGORIES ── */}
+          <DashSection title="Top categories">
+            <TopList
+              rows={data?.topCategories?.categories || []}
+              render={(c) => [
+                c.name,
+                formatINR(c.revenue || 0),
+                `${c.revenueSharePercent ?? 0}% share · ${c.unitsSold || 0} units`,
+              ]}
+            />
+          </DashSection>
+
+          {/* ── 6. TOP CUSTOMERS ── */}
+          <DashSection title="Top customers">
+            <TopList
+              rows={data?.topCustomers?.customers || []}
+              render={(c) => [
+                `${c.name || c.userId}${c.phone ? ` · ${c.phone}` : ""}`,
+                formatINR(c.revenue || 0),
+                `${c.orders || 0} orders`,
+              ]}
+            />
+          </DashSection>
+
+          {/* ── 7. CATALOGUE & CUSTOMERS ── */}
+          <DashSection title="Catalogue & customers">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <Kpi
+                label="Published products"
+                value={ov.catalogue?.publishedProducts ?? 0}
+                small
+              />
+              <Kpi
+                label="Open quotations"
+                value={ov.catalogue?.openQuotations ?? 0}
+                small
+              />
+              <Kpi
+                label="New customers"
+                value={ov.customers?.newInRange ?? 0}
+                small
+              />
+              <Kpi
+                label="Total customers"
+                value={ov.customers?.total ?? 0}
+                small
+              />
+            </div>
+          </DashSection>
         </>
       )}
     </div>
   );
 }
 
-function TopList({ title, rows, render }) {
-  if (!Array.isArray(rows) || rows.length === 0) return null;
+function DashSection({ title, children }) {
   return (
-    <div>
-      <h3 className="mb-2 text-sm font-extrabold uppercase tracking-wide text-ink-2">
+    <section className="space-y-3">
+      <h3 className="text-sm font-extrabold uppercase tracking-wide text-ink-2">
         {title}
       </h3>
+      {children}
+    </section>
+  );
+}
+
+function Kpi({ label, value, growth, small }) {
+  return (
+    <div className="rounded-xl border border-line bg-shell p-4">
+      <p className="text-xs font-bold uppercase tracking-wide text-ink-4">
+        {label}
+      </p>
+      <p
+        className={`mt-1 font-display font-extrabold text-ink ${
+          small ? "text-lg" : "text-xl"
+        }`}
+      >
+        {value}
+      </p>
+      {growth != null && (
+        <p
+          className={`text-xs font-bold ${
+            growth >= 0 ? "text-leaf" : "text-flame"
+          }`}
+        >
+          {growth >= 0 ? "▲" : "▼"} {Math.abs(growth)}%
+        </p>
+      )}
+    </div>
+  );
+}
+
+function MiniBars({ title, buckets, valueKey, format }) {
+  if (!Array.isArray(buckets) || buckets.length === 0) return null;
+  const max = Math.max(...buckets.map((b) => Number(b[valueKey]) || 0), 1);
+  return (
+    <div>
+      <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink-4">
+        {title}
+      </p>
+      <div className="flex items-end gap-1 overflow-x-auto rounded-xl border border-line bg-shell p-3">
+        {buckets.map((b) => {
+          const v = Number(b[valueKey]) || 0;
+          return (
+            <div
+              key={b.period}
+              className="flex min-w-[12px] flex-1 flex-col items-center gap-1"
+              title={`${b.period}: ${format(v)}`}
+            >
+              <span
+                className="w-full rounded-t bg-flame"
+                style={{ height: `${Math.max(2, (v / max) * 90)}px` }}
+              />
+              <span className="w-full truncate text-center text-[9px] text-ink-4">
+                {String(b.period).slice(5) || b.period}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Breakdown({ title, rows }) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (list.length === 0) return null;
+  return (
+    <div>
+      <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink-4">
+        {title}
+      </p>
+      <Table head={["", "Orders", "Revenue", "Share"]}>
+        {list.map((r, i) => (
+          <tr key={i} className="border-b border-line last:border-0">
+            <td className="px-4 py-2.5 font-semibold">{r.key || "—"}</td>
+            <td className="px-4 py-2.5">{r.orders ?? 0}</td>
+            <td className="px-4 py-2.5">{formatINR(r.revenue ?? 0)}</td>
+            <td className="px-4 py-2.5">
+              {r.sharePercent != null ? `${r.sharePercent}%` : "—"}
+            </td>
+          </tr>
+        ))}
+      </Table>
+    </div>
+  );
+}
+
+function TopList({ title, rows, render }) {
+  if (!Array.isArray(rows) || rows.length === 0)
+    return <p className="text-sm text-ink-3">No data in this range.</p>;
+  return (
+    <div>
+      {title ? (
+        <h3 className="mb-2 text-sm font-extrabold uppercase tracking-wide text-ink-2">
+          {title}
+        </h3>
+      ) : null}
       <Table head={["Name", "Value", "Detail"]}>
         {rows.map((r, i) => {
           const cells = render(r);
@@ -280,8 +519,70 @@ function useOrders() {
   return useAsync(() => orderApi.getAdminOrders(), []);
 }
 
+// admin-settable statuses for a STORE order (mirrors order.service.js)
+const ORDER_STATUSES = [
+  "PENDING_PAYMENT",
+  "PAID",
+  "CONFIRMED",
+  "PROCESSING",
+  "IN_PRODUCTION",
+  "COMPLETED",
+  "CANCELLED",
+];
+
+function OrderStatusControl({ order, onChanged }) {
+  const [status, setStatus] = useState(order.status);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const locked =
+    order.source !== "STORE" ||
+    order.status === "COMPLETED" ||
+    order.status === "CANCELLED";
+
+  const change = async (next) => {
+    if (next === status) return;
+    setErr("");
+    setBusy(true);
+    try {
+      await orderApi.updateOrderStatus(order._id, next);
+      setStatus(next);
+      onChanged?.();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (locked) {
+    return (
+      <span className="rounded bg-canvas px-2 py-1 text-xs font-bold">
+        {order.status?.replace(/_/g, " ")}
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex flex-col gap-1">
+      <select
+        value={status}
+        disabled={busy}
+        onChange={(e) => change(e.target.value)}
+        className="h-8 rounded-md border border-line bg-shell px-2 text-xs font-bold outline-none focus:border-flame disabled:opacity-60"
+      >
+        {ORDER_STATUSES.map((s) => (
+          <option key={s} value={s}>
+            {s.replace(/_/g, " ")}
+          </option>
+        ))}
+      </select>
+      {err && <span className="text-[10px] font-semibold text-flame">{err}</span>}
+    </span>
+  );
+}
+
 function OrderList({ filterId }) {
-  const { data, loading, error } = useOrders();
+  const { data, loading, error, reload } = useOrders();
   const [open, setOpen] = useState(null);
   const orders = Array.isArray(data) ? data : data?.data || [];
   const f = ORDER_TABS.find((t) => t.id === filterId) || ORDER_TABS[0];
@@ -312,9 +613,7 @@ function OrderList({ filterId }) {
                 {formatINR(o.pricing?.total || 0)}
               </td>
               <td className="px-4 py-3">
-                <span className="rounded bg-canvas px-2 py-1 text-xs font-bold">
-                  {o.status?.replace(/_/g, " ")}
-                </span>
+                <OrderStatusControl order={o} onChanged={reload} />
               </td>
               <td className="px-4 py-3">
                 <button
@@ -335,6 +634,25 @@ function OrderList({ filterId }) {
                         {o.shippingAddress?.name},{" "}
                         {o.shippingAddress?.addressLine1},{" "}
                         {o.shippingAddress?.city} {o.shippingAddress?.pincode}
+                      </p>
+                      <p className="mt-1 text-ink-3">
+                        Placed{" "}
+                        {new Date(o.createdAt).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                        {o.shipping?.courierName
+                          ? ` · ${o.shipping.courierName}`
+                          : ""}
+                        {o.shipping?.estimatedDelivery
+                          ? ` · ETA ${new Date(
+                              o.shipping.estimatedDelivery
+                            ).toLocaleDateString("en-IN", {
+                              day: "numeric",
+                              month: "short",
+                            })}`
+                          : ""}
                       </p>
                     </div>
                     <div>
@@ -473,9 +791,10 @@ export function Payments() {
 /* ══════════ PRODUCTS ══════════ */
 
 export function Products() {
+  const [page, setPage] = useState(1);
   const { data, loading, error, reload } = useAsync(
-    () => productApi.listProducts({ limit: 200 }),
-    []
+    () => productApi.listProducts({ page, limit: 20 }),
+    [page]
   );
   const cats = useAsync(() => categoryApi.listCategories({ limit: 200 }), []);
   const subs = useAsync(
@@ -545,6 +864,14 @@ export function Products() {
             </tr>
           ))}
         </Table>
+      )}
+
+      {!loading && (
+        <Pager
+          page={page}
+          setPage={setPage}
+          totalPages={data?.pagination?.totalPages}
+        />
       )}
 
       {editing && (
@@ -652,6 +979,15 @@ function ProductModal({ product, categories, subcategories, onClose, onSaved }) 
   const [ok, setOk] = useState("");
   const [saving, setSaving] = useState(false);
   const [savedId, setSavedId] = useState(product?._id || null);
+  const [tab, setTab] = useState("details");
+
+  const PRODUCT_TABS = [
+    { id: "details", label: "Details" },
+    { id: "media", label: "Media" },
+    { id: "specs", label: "Specs" },
+    { id: "options", label: "Options & values" },
+    { id: "slabs", label: "Price slabs" },
+  ];
 
   const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
   const subOpts = subcategories
@@ -693,6 +1029,46 @@ function ProductModal({ product, categories, subcategories, onClose, onSaved }) 
       onClose={onClose}
       wide
     >
+      <div className="mb-4 flex flex-wrap gap-1.5 border-b border-line pb-3">
+        {PRODUCT_TABS.map((t) => {
+          const locked = t.id !== "details" && !savedId;
+          return (
+            <button
+              key={t.id}
+              onClick={() => !locked && setTab(t.id)}
+              disabled={locked}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors ${
+                tab === t.id
+                  ? "bg-ink text-white"
+                  : locked
+                    ? "cursor-not-allowed text-ink-4"
+                    : "border border-line bg-shell text-ink-2 hover:border-ink-5"
+              }`}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab !== "details" && savedId && (
+        <div className="space-y-5">
+          {tab === "media" && <MediaEditor productId={savedId} />}
+          {tab === "specs" && <SpecEditor productId={savedId} />}
+          {tab === "options" && <OptionEditor productId={savedId} />}
+          {tab === "slabs" && <PriceSlabEditor productId={savedId} />}
+          <div className="border-t border-line pt-3">
+            <button
+              onClick={onSaved}
+              className="rounded-md border border-line px-4 py-2 text-sm font-bold text-ink-2 hover:border-ink-5"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className={tab === "details" ? "" : "hidden"}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Name" value={f.name} onChange={set("name")} />
         <Field label="SKU" value={f.sku} onChange={set("sku")} />
@@ -799,16 +1175,284 @@ function ProductModal({ product, categories, subcategories, onClose, onSaved }) 
             </button>
           )}
         </div>
+        {!savedId && (
+          <p className="text-xs text-ink-3">
+            Create the product first — Media, Specs, Options and Price slabs
+            unlock once it exists.
+          </p>
+        )}
       </div>
+      </div>
+    </Modal>
+  );
+}
 
-      {savedId && (
-        <div className="mt-5 space-y-5 border-t border-line pt-5">
-          <SpecEditor productId={savedId} />
-          <PriceSlabEditor productId={savedId} />
-          <OptionEditor productId={savedId} />
+function MediaEditor({ productId }) {
+  const { data, reload } = useAsync(
+    () => productApi.getProductMedia(productId),
+    [productId]
+  );
+  const rows = data?.media || data || [];
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const fileRef = useRef(null);
+
+  const upload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setBusy(true);
+    setErr("");
+    try {
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("file", file);
+        await productApi.createMedia(productId, fd);
+      }
+      reload();
+    } catch (e2) {
+      setErr(e2.message);
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const makePrimary = async (id) => {
+    try {
+      await productApi.updateMedia(productId, id, { isPrimary: true });
+      reload();
+    } catch (e2) {
+      setErr(e2.message);
+    }
+  };
+
+  const saveAlt = async (id, altText) => {
+    await productApi.updateMedia(productId, id, { altText });
+    reload();
+  };
+
+  const remove = async (id) => {
+    try {
+      await productApi.deleteMedia(productId, id);
+      reload();
+    } catch (e2) {
+      setErr(e2.message);
+    }
+  };
+
+  return (
+    <Section title="Media">
+      <Msg error={err} />
+      {rows.length > 0 && (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          {rows.map((m) => (
+            <MediaCard
+              key={m._id}
+              media={m}
+              onPrimary={() => makePrimary(m._id)}
+              onSaveAlt={(alt) => saveAlt(m._id, alt)}
+              onDelete={() => remove(m._id)}
+            />
+          ))}
         </div>
       )}
-    </Modal>
+      <button
+        onClick={() => fileRef.current?.click()}
+        disabled={busy}
+        className="mt-4 rounded-md border border-line px-3 py-2 text-xs font-bold text-ink-2 hover:border-ink-5 disabled:opacity-60"
+      >
+        {busy ? "Uploading…" : "Upload images / video"}
+      </button>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*,video/*"
+        multiple
+        hidden
+        onChange={upload}
+      />
+    </Section>
+  );
+}
+
+function MediaCard({ media: m, onPrimary, onSaveAlt, onDelete }) {
+  const [alt, setAlt] = useState(m.altText || "");
+  const [busy, setBusy] = useState(false);
+  const dirty = alt !== (m.altText || "");
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await onSaveAlt(alt.trim());
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2 rounded-lg border border-line p-2.5">
+      {m.type === "VIDEO" ? (
+        <video src={m.url} muted className="h-24 w-full rounded object-cover" />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={m.url}
+          alt={m.altText || ""}
+          className="h-24 w-full rounded object-cover"
+        />
+      )}
+
+      <input
+        value={alt}
+        onChange={(e) => setAlt(e.target.value)}
+        placeholder="Alt text"
+        className="h-8 w-full rounded-md border border-line px-2 text-xs outline-none focus:border-flame"
+      />
+      {dirty && (
+        <button
+          onClick={save}
+          disabled={busy}
+          className="w-full rounded-md bg-ink px-2 py-1 text-[11px] font-bold text-white hover:bg-ink-2 disabled:opacity-60"
+        >
+          {busy ? "Saving…" : "Save alt text"}
+        </button>
+      )}
+
+      <div className="flex items-center justify-between pt-0.5">
+        <button
+          onClick={onPrimary}
+          disabled={m.isPrimary}
+          className={`text-xs font-bold ${
+            m.isPrimary ? "text-leaf" : "text-flame hover:underline"
+          }`}
+        >
+          {m.isPrimary ? "Primary" : "Set primary"}
+        </button>
+        <button
+          onClick={onDelete}
+          className="text-ink-3 hover:text-flame"
+          aria-label="Delete"
+        >
+          <Trash size={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── inline-edit primitives (shared by spec / slab / option editors) ── */
+
+const editIconBtn =
+  "grid h-7 w-7 place-items-center rounded-md border border-line text-ink-3 hover:border-ink-5 hover:text-ink";
+
+function SaveCancel({ onSave, onCancel, busy, err }) {
+  return (
+    <div className="flex items-center gap-2 pt-0.5">
+      <button
+        onClick={onSave}
+        disabled={busy}
+        className="rounded-md bg-ink px-3 py-1.5 text-xs font-bold text-white hover:bg-ink-2 disabled:opacity-60"
+      >
+        {busy ? "Saving…" : "Save"}
+      </button>
+      <button
+        onClick={onCancel}
+        className="rounded-md border border-line px-3 py-1.5 text-xs font-bold text-ink-2 hover:border-ink-5"
+      >
+        Cancel
+      </button>
+      {err && (
+        <span className="text-[11px] font-semibold text-flame">{err}</span>
+      )}
+    </div>
+  );
+}
+
+const Labeled = ({ label, className = "", children }) => (
+  <label className={`block ${className}`}>
+    <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-ink-4">
+      {label}
+    </span>
+    {children}
+  </label>
+);
+
+const inlineInput =
+  "h-9 w-full rounded-md border border-line px-3 text-sm outline-none focus:border-flame";
+
+/**
+ * One list entry with view / edit / delete. `fields` describes the editable
+ * inputs; `toPayload` turns the working values into the update body.
+ */
+function EditableEntry({ view, fields, initial, onSave, onDelete }) {
+  const [editing, setEditing] = useState(false);
+  const [f, setF] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const start = () => {
+    setF(initial);
+    setErr("");
+    setEditing(true);
+  };
+
+  const save = async () => {
+    setErr("");
+    setBusy(true);
+    try {
+      await onSave(f);
+      setEditing(false);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-md bg-canvas/40 px-3 py-2">
+        <span className="text-sm font-semibold text-ink-2">{view}</span>
+        <div className="flex shrink-0 gap-1.5">
+          <button onClick={start} className={editIconBtn} aria-label="Edit">
+            <PencilSimple size={13} />
+          </button>
+          <button onClick={onDelete} className={editIconBtn} aria-label="Delete">
+            <Trash size={13} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-md border border-line p-3">
+      <div className="flex flex-wrap items-end gap-2">
+        {fields.map((fd) => (
+          <Labeled
+            key={fd.key}
+            label={fd.label}
+            className={fd.wide ? "min-w-[140px] flex-1" : "w-24"}
+          >
+            <input
+              type={fd.type || "text"}
+              step={fd.step}
+              value={f[fd.key] ?? ""}
+              onChange={(e) =>
+                setF((s) => ({ ...s, [fd.key]: e.target.value }))
+              }
+              className={inlineInput}
+            />
+          </Labeled>
+        ))}
+      </div>
+      <SaveCancel
+        onSave={save}
+        onCancel={() => setEditing(false)}
+        busy={busy}
+        err={err}
+      />
+    </div>
   );
 }
 
@@ -830,17 +1474,31 @@ function SpecEditor({ productId }) {
   };
   return (
     <Section title="Specs">
-      {rows.map((s) => (
-        <Row
-          key={s._id}
-          text={`${s.label}: ${s.value}`}
-          onDelete={async () => {
-            await productApi.deleteSpec(productId, s._id);
-            reload();
-          }}
-        />
-      ))}
-      <div className="flex gap-2">
+      <div className="space-y-2">
+        {rows.map((s) => (
+          <EditableEntry
+            key={s._id}
+            view={`${s.label}: ${s.value}`}
+            initial={{ label: s.label, value: s.value }}
+            fields={[
+              { key: "label", label: "Label", wide: true },
+              { key: "value", label: "Value", wide: true },
+            ]}
+            onSave={async (f) => {
+              await productApi.updateSpec(productId, s._id, {
+                label: f.label,
+                value: f.value,
+              });
+              reload();
+            }}
+            onDelete={async () => {
+              await productApi.deleteSpec(productId, s._id);
+              reload();
+            }}
+          />
+        ))}
+      </div>
+      <div className="mt-4 flex gap-2 border-t border-line pt-4">
         <input
           placeholder="Label"
           value={label}
@@ -883,19 +1541,47 @@ function PriceSlabEditor({ productId }) {
   };
   return (
     <Section title="Price slabs (bulk tiers)">
-      {rows.map((s) => (
-        <Row
-          key={s._id}
-          text={`${s.minQty}${s.maxQty ? `–${s.maxQty}` : "+"} @ ${formatINR(
-            s.unitPrice
-          )}`}
-          onDelete={async () => {
-            await productApi.deletePriceSlab(productId, s._id);
-            reload();
-          }}
-        />
-      ))}
-      <div className="flex gap-2">
+      <div className="space-y-2">
+        {rows.map((s) => (
+          <EditableEntry
+            key={s._id}
+            view={`${s.minQty}${s.maxQty ? `–${s.maxQty}` : "+"} @ ${formatINR(
+              s.unitPrice
+            )}`}
+            initial={{
+              minQty: s.minQty,
+              maxQty: s.maxQty ?? "",
+              unitPrice: s.unitPrice,
+            }}
+            fields={[
+              { key: "minQty", label: "Min qty", type: "number" },
+              { key: "maxQty", label: "Max qty", type: "number" },
+              {
+                key: "unitPrice",
+                label: "Unit price",
+                type: "number",
+                wide: true,
+              },
+            ]}
+            onSave={async (f) => {
+              await productApi.updatePriceSlab(productId, s._id, {
+                minQty: Number(f.minQty),
+                maxQty:
+                  f.maxQty === "" || f.maxQty === null
+                    ? null
+                    : Number(f.maxQty),
+                unitPrice: Number(f.unitPrice),
+              });
+              reload();
+            }}
+            onDelete={async () => {
+              await productApi.deletePriceSlab(productId, s._id);
+              reload();
+            }}
+          />
+        ))}
+      </div>
+      <div className="mt-4 flex gap-2 border-t border-line pt-4">
         <input
           placeholder="Min qty"
           type="number"
@@ -945,19 +1631,23 @@ function OptionEditor({ productId }) {
   };
   return (
     <Section title="Options & values">
-      {options.map((o) => (
-        <div key={o._id} className="rounded-md border border-line p-2">
-          <Row
-            text={`${o.name} (${o.type}${o.isRequired ? ", required" : ""})`}
-            onDelete={async () => {
-              await productApi.deleteOption(productId, o._id);
-              reload();
-            }}
-          />
-          <ValueEditor productId={productId} option={o} onChange={reload} />
-        </div>
-      ))}
-      <div className="flex flex-wrap gap-2">
+      <div className="space-y-4">
+        {options.map((o) => (
+          <div
+            key={o._id}
+            className="rounded-lg border border-line bg-canvas/40 p-4"
+          >
+            <OptionHeadRow
+              productId={productId}
+              option={o}
+              onChange={reload}
+            />
+            <ValueEditor productId={productId} option={o} onChange={reload} />
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-4">
         <input
           placeholder="Option name (e.g. Colour)"
           value={name}
@@ -988,6 +1678,122 @@ function OptionEditor({ productId }) {
   );
 }
 
+function OptionHeadRow({ productId, option, onChange }) {
+  const [editing, setEditing] = useState(false);
+  const [f, setF] = useState({
+    name: option.name,
+    type: option.type,
+    isRequired: option.isRequired,
+  });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const save = async () => {
+    if (!f.name.trim()) return;
+    setErr("");
+    setBusy(true);
+    try {
+      await productApi.updateOption(productId, option._id, {
+        name: f.name.trim(),
+        type: f.type,
+        isRequired: f.isRequired,
+      });
+      setEditing(false);
+      onChange?.();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    await productApi.deleteOption(productId, option._id);
+    onChange?.();
+  };
+
+  if (!editing) {
+    return (
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm font-semibold text-ink-2">
+          {option.name}{" "}
+          <span className="text-xs font-normal text-ink-4">
+            ({option.type}
+            {option.isRequired ? ", required" : ""})
+          </span>
+        </span>
+        <div className="flex gap-1.5">
+          <button
+            className={iconBtn}
+            onClick={() => {
+              setF({
+                name: option.name,
+                type: option.type,
+                isRequired: option.isRequired,
+              });
+              setEditing(true);
+            }}
+            aria-label="Edit option"
+          >
+            <PencilSimple size={14} />
+          </button>
+          <button className={iconBtn} onClick={remove} aria-label="Delete option">
+            <Trash size={14} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={f.name}
+          onChange={(e) => setF((s) => ({ ...s, name: e.target.value }))}
+          className="h-9 flex-1 rounded-md border border-line px-3 text-sm outline-none focus:border-flame"
+        />
+        <select
+          value={f.type}
+          onChange={(e) => setF((s) => ({ ...s, type: e.target.value }))}
+          className="h-9 rounded-md border border-line px-2 text-sm"
+        >
+          {["SELECT", "TEXT", "COLOR", "FILE"].map((t) => (
+            <option key={t}>{t}</option>
+          ))}
+        </select>
+        <label className="flex items-center gap-1.5 text-xs font-semibold">
+          <input
+            type="checkbox"
+            checked={f.isRequired}
+            onChange={(e) =>
+              setF((s) => ({ ...s, isRequired: e.target.checked }))
+            }
+            className="h-4 w-4 accent-flame"
+          />
+          Req
+        </label>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={save}
+          disabled={busy}
+          className="rounded-md bg-ink px-3 py-1.5 text-xs font-bold text-white hover:bg-ink-2 disabled:opacity-60"
+        >
+          {busy ? "Saving…" : "Save"}
+        </button>
+        <button
+          onClick={() => setEditing(false)}
+          className="rounded-md border border-line px-3 py-1.5 text-xs font-bold text-ink-2 hover:border-ink-5"
+        >
+          Cancel
+        </button>
+        {err && <span className="text-[11px] font-semibold text-flame">{err}</span>}
+      </div>
+    </div>
+  );
+}
+
 function ValueEditor({ option, onChange }) {
   const { data, reload } = useAsync(
     () => productApi.getOptionValues(option._id),
@@ -996,76 +1802,209 @@ function ValueEditor({ option, onChange }) {
   const values = data?.values || data || option.values || [];
   const [value, setValue] = useState("");
   const [delta, setDelta] = useState("");
+  const [mult, setMult] = useState("1");
 
   const add = async () => {
     if (!value) return;
     await productApi.createOptionValue(option._id, {
       value,
       priceDelta: Number(delta) || 0,
-      priceMultiplier: 1,
+      priceMultiplier: Number(mult) || 1,
     });
     setValue("");
     setDelta("");
+    setMult("1");
     reload();
     onChange?.();
   };
   return (
-    <div className="mt-2 space-y-1.5 pl-3">
+    <div className="mt-3 space-y-2 border-t border-line pt-3 pl-3">
       {values.map((v) => (
-        <Row
+        <OptionValueRow
           key={v._id}
-          small
-          text={`${v.value}${v.priceDelta ? ` +${formatINR(v.priceDelta)}` : ""}`}
-          onDelete={async () => {
-            await productApi.deleteOptionValue(option._id, v._id);
+          option={option}
+          value={v}
+          onChange={() => {
             reload();
             onChange?.();
           }}
         />
       ))}
-      <div className="flex gap-2">
-        <input
-          placeholder="Value"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          className="h-8 flex-1 rounded-md border border-line px-2 text-xs outline-none focus:border-flame"
-        />
-        <input
-          placeholder="+₹"
-          type="number"
-          value={delta}
-          onChange={(e) => setDelta(e.target.value)}
-          className="h-8 w-16 rounded-md border border-line px-2 text-xs outline-none focus:border-flame"
-        />
+      <div className="flex items-end gap-2 pt-1">
+        <label className="flex-1">
+          <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-ink-4">
+            Value
+          </span>
+          <input
+            placeholder="e.g. Red"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            className="h-8 w-full rounded-md border border-line px-2 text-xs outline-none focus:border-flame"
+          />
+        </label>
+        <label className="w-20">
+          <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-ink-4">
+            priceDelta
+          </span>
+          <input
+            placeholder="+₹"
+            type="number"
+            value={delta}
+            onChange={(e) => setDelta(e.target.value)}
+            className="h-8 w-full rounded-md border border-line px-2 text-xs outline-none focus:border-flame"
+          />
+        </label>
+        <label className="w-20">
+          <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-ink-4">
+            priceMultiplier
+          </span>
+          <input
+            placeholder="×1"
+            type="number"
+            step="0.01"
+            min="0"
+            value={mult}
+            onChange={(e) => setMult(e.target.value)}
+            className="h-8 w-full rounded-md border border-line px-2 text-xs outline-none focus:border-flame"
+          />
+        </label>
         <AddBtn onClick={add} small />
       </div>
     </div>
   );
 }
 
+function OptionValueRow({ option, value, onChange }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(value.value);
+  const [delta, setDelta] = useState(value.priceDelta ?? "");
+  const [mult, setMult] = useState(value.priceMultiplier ?? 1);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const save = async () => {
+    if (!val.trim()) return;
+    setErr("");
+    setBusy(true);
+    try {
+      await productApi.updateOptionValue(option._id, value._id, {
+        value: val.trim(),
+        priceDelta: Number(delta) || 0,
+        priceMultiplier: Number(mult) || 1,
+      });
+      setEditing(false);
+      onChange?.();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    await productApi.deleteOptionValue(option._id, value._id);
+    onChange?.();
+  };
+
+  if (!editing) {
+    return (
+      <div className="flex items-center justify-between gap-2 text-xs">
+        <span className="font-semibold text-ink-2">
+          {value.value}
+          {value.priceDelta ? ` +${formatINR(value.priceDelta)}` : ""}
+          {value.priceMultiplier && value.priceMultiplier !== 1
+            ? ` ×${value.priceMultiplier}`
+            : ""}
+        </span>
+        <div className="flex gap-1.5">
+          <button
+            onClick={() => {
+              setVal(value.value);
+              setDelta(value.priceDelta ?? "");
+              setMult(value.priceMultiplier ?? 1);
+              setEditing(true);
+            }}
+            className="text-ink-3 hover:text-ink"
+            aria-label="Edit value"
+          >
+            <PencilSimple size={12} />
+          </button>
+          <button
+            onClick={remove}
+            className="text-ink-3 hover:text-flame"
+            aria-label="Delete value"
+          >
+            <Trash size={12} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-end gap-2">
+        <label className="flex-1">
+          <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-ink-4">
+            Value
+          </span>
+          <input
+            value={val}
+            onChange={(e) => setVal(e.target.value)}
+            className="h-8 w-full rounded-md border border-line px-2 text-xs outline-none focus:border-flame"
+          />
+        </label>
+        <label className="w-20">
+          <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-ink-4">
+            priceDelta
+          </span>
+          <input
+            type="number"
+            value={delta}
+            onChange={(e) => setDelta(e.target.value)}
+            className="h-8 w-full rounded-md border border-line px-2 text-xs outline-none focus:border-flame"
+          />
+        </label>
+        <label className="w-20">
+          <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-ink-4">
+            priceMultiplier
+          </span>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={mult}
+            onChange={(e) => setMult(e.target.value)}
+            className="h-8 w-full rounded-md border border-line px-2 text-xs outline-none focus:border-flame"
+          />
+        </label>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={save}
+          disabled={busy}
+          className="rounded-md bg-ink px-2.5 py-1 text-[11px] font-bold text-white hover:bg-ink-2 disabled:opacity-60"
+        >
+          {busy ? "Saving…" : "Save"}
+        </button>
+        <button
+          onClick={() => setEditing(false)}
+          className="rounded-md border border-line px-2.5 py-1 text-[11px] font-bold text-ink-2 hover:border-ink-5"
+        >
+          Cancel
+        </button>
+        {err && <span className="text-[11px] font-semibold text-flame">{err}</span>}
+      </div>
+    </div>
+  );
+}
+
 const Section = ({ title, children }) => (
-  <div>
-    <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink-4">
+  <div className="rounded-xl border border-line bg-shell p-4">
+    <p className="mb-3 text-xs font-bold uppercase tracking-wide text-ink-4">
       {title}
     </p>
-    <div className="space-y-2">{children}</div>
-  </div>
-);
-
-const Row = ({ text, onDelete, small }) => (
-  <div
-    className={`flex items-center justify-between rounded ${
-      small ? "text-xs" : "text-sm"
-    }`}
-  >
-    <span className="font-semibold text-ink-2">{text}</span>
-    <button
-      onClick={onDelete}
-      className="text-ink-3 hover:text-flame"
-      aria-label="Delete"
-    >
-      <Trash size={small ? 12 : 14} />
-    </button>
+    <div className="space-y-3">{children}</div>
   </div>
 );
 
@@ -1083,13 +2022,17 @@ const AddBtn = ({ onClick, small }) => (
 
 /* ══════════ CATEGORIES ══════════ */
 
+const TAXONOMY_LIMIT = 20;
+
 function TaxonomyTab({ kind }) {
   const isCat = kind === "category";
   const api = isCat ? categoryApi : subcategoryApi;
+  const [page, setPage] = useState(1);
   const listFn = isCat
-    ? () => categoryApi.listCategories({ limit: 200 })
-    : () => subcategoryApi.listSubcategories({ limit: 500 });
-  const { data, loading, error, reload } = useAsync(listFn, []);
+    ? () => categoryApi.listCategories({ page, limit: TAXONOMY_LIMIT })
+    : () =>
+        subcategoryApi.listSubcategories({ page, limit: TAXONOMY_LIMIT });
+  const { data, loading, error, reload } = useAsync(listFn, [page]);
   const catsData = useAsync(
     () => categoryApi.listCategories({ limit: 200 }),
     []
@@ -1098,6 +2041,11 @@ function TaxonomyTab({ kind }) {
   const categories = catsData.data?.category || [];
   const [editing, setEditing] = useState(null);
   const [msg, setMsg] = useState("");
+
+  // dropped the last row on a trailing page — step back
+  useEffect(() => {
+    if (!loading && rows.length === 0 && page > 1) setPage((p) => p - 1);
+  }, [loading, rows.length, page]);
 
   const remove = async (id) => {
     if (!confirm("Delete?")) return;
@@ -1152,6 +2100,14 @@ function TaxonomyTab({ kind }) {
             </tr>
           ))}
         </Table>
+      )}
+
+      {!loading && (
+        <Pager
+          page={page}
+          setPage={setPage}
+          hasNext={rows.length >= TAXONOMY_LIMIT}
+        />
       )}
 
       {editing && (
@@ -1617,15 +2573,484 @@ export function ManualOrder() {
 /* ══════════ BANNERS ══════════ */
 
 export function Banners() {
+  const { data, loading, error, reload } = useAsync(
+    () => bannerApi.listBanners(),
+    []
+  );
+  const rows = data?.banners || [];
+  const [editing, setEditing] = useState(null);
+  const [msg, setMsg] = useState("");
+
+  const toggleActive = async (b) => {
+    try {
+      const fd = new FormData();
+      fd.append("isActive", String(!b.isActive));
+      await bannerApi.updateBanner(b._id, fd);
+      reload();
+    } catch (e) {
+      setMsg(e.message);
+    }
+  };
+
   return (
-    <div className="rounded-xl border border-dashed border-line bg-shell p-10 text-center">
-      <p className="font-display text-lg font-extrabold text-ink">
-        Banners
-      </p>
-      <p className="mx-auto mt-2 max-w-sm text-sm text-ink-3">
-        The hero currently uses the built-in carousel. Banner management wiring
-        (`/api/Banner`) is scaffolded and can be turned on here later.
-      </p>
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Btn onClick={() => setEditing({})}>
+          <Plus size={13} className="mr-1 inline" /> New banner
+        </Btn>
+      </div>
+      <Msg error={error || msg} />
+      {loading ? (
+        <p className="text-sm text-ink-3">Loading…</p>
+      ) : (
+        <Table head={["Preview", "Type", "Title", "Order", "Active", ""]}>
+          {rows.map((b) => (
+            <tr key={b._id} className="border-b border-line last:border-0">
+              <td className="px-4 py-3">
+                {b.mediaUrlDesktop ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={b.mediaUrlDesktop}
+                    alt=""
+                    className="h-10 w-20 rounded object-cover"
+                  />
+                ) : (
+                  "—"
+                )}
+              </td>
+              <td className="px-4 py-3 font-bold">{b.type}</td>
+              <td className="px-4 py-3">{b.title || "—"}</td>
+              <td className="px-4 py-3">{b.order}</td>
+              <td className="px-4 py-3">
+                <button
+                  onClick={() => toggleActive(b)}
+                  className={`rounded px-2.5 py-1 text-xs font-bold ${
+                    b.isActive
+                      ? "bg-leaf-lt text-leaf"
+                      : "bg-flame-lt text-flame"
+                  }`}
+                >
+                  {b.isActive ? "Live" : "Hidden"}
+                </button>
+              </td>
+              <td className="px-4 py-3">
+                <button className={iconBtn} onClick={() => setEditing(b)}>
+                  <PencilSimple size={14} />
+                </button>
+              </td>
+            </tr>
+          ))}
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={6} className="px-4 py-8 text-center text-ink-3">
+                No banners
+              </td>
+            </tr>
+          )}
+        </Table>
+      )}
+      {editing && (
+        <BannerModal
+          row={editing._id ? editing : null}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            reload();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function BannerModal({ row, onClose, onSaved }) {
+  const [f, setF] = useState({
+    type: row?.type || "SLIDER",
+    title: row?.title || "",
+    subTitle: row?.subTitle || "",
+    ctaLabel: row?.ctaLabel || "",
+    ctaUrl: row?.ctaUrl || "",
+    order: row?.order ?? 1,
+    isActive: row?.isActive !== false,
+  });
+  const [desktop, setDesktop] = useState(null);
+  const [mobile, setMobile] = useState(null);
+  const [err, setErr] = useState("");
+  const [saving, setSaving] = useState(false);
+  const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
+
+  const save = async () => {
+    setErr("");
+    if (!row && (!desktop || !mobile))
+      return setErr("Desktop and mobile media are both required for a new banner");
+    setSaving(true);
+    try {
+      const fd = new FormData();
+      fd.append("type", f.type);
+      fd.append("title", f.title);
+      fd.append("subTitle", f.subTitle);
+      fd.append("ctaLabel", f.ctaLabel);
+      fd.append("ctaUrl", f.ctaUrl);
+      fd.append("order", String(f.order));
+      fd.append("isActive", String(f.isActive));
+      if (desktop) fd.append("mediaDesktop", desktop);
+      if (mobile) fd.append("mediaMobile", mobile);
+      row
+        ? await bannerApi.updateBanner(row._id, fd)
+        : await bannerApi.createBanner(fd);
+      onSaved();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title={row ? "Edit banner" : "New banner"} onClose={onClose}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field
+          label="Type"
+          value={f.type}
+          onChange={set("type")}
+          options={[
+            { value: "SLIDER", label: "Slider" },
+            { value: "SHOWREEL", label: "Showreel" },
+          ]}
+        />
+        <Field
+          label="Order"
+          type="number"
+          value={f.order}
+          onChange={set("order")}
+        />
+        <Field label="Title" value={f.title} onChange={set("title")} />
+        <Field label="Subtitle" value={f.subTitle} onChange={set("subTitle")} />
+        <Field label="CTA label" value={f.ctaLabel} onChange={set("ctaLabel")} />
+        <Field label="CTA url" value={f.ctaUrl} onChange={set("ctaUrl")} />
+        <label className="block">
+          <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-ink-4">
+            Desktop media{row ? " (leave empty to keep)" : ""}
+          </span>
+          <input
+            type="file"
+            accept="image/*,video/*"
+            onChange={(e) => setDesktop(e.target.files?.[0] || null)}
+            className="text-xs"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-ink-4">
+            Mobile media{row ? " (leave empty to keep)" : ""}
+          </span>
+          <input
+            type="file"
+            accept="image/*,video/*"
+            onChange={(e) => setMobile(e.target.files?.[0] || null)}
+            className="text-xs"
+          />
+        </label>
+        <label className="col-span-full flex items-center gap-2 text-sm font-semibold">
+          <input
+            type="checkbox"
+            checked={f.isActive}
+            onChange={(e) => set("isActive")(e.target.checked)}
+            className="h-4 w-4 accent-flame"
+          />
+          Active
+        </label>
+      </div>
+      <div className="mt-4 space-y-2">
+        <Msg error={err} />
+        <Btn onClick={save} disabled={saving}>
+          {saving ? "Saving…" : "Save"}
+        </Btn>
+      </div>
+    </Modal>
+  );
+}
+
+/* ══════════ QUOTATIONS ══════════ */
+
+const QUOTATION_STATUSES = [
+  "PENDING",
+  "IN_REVIEW",
+  "QUOTED",
+  "ACCEPTED",
+  "REJECTED",
+  "EXPIRED",
+  "CONVERTED",
+  "CANCELLED",
+];
+
+export function Quotations() {
+  const [page, setPage] = useState(1);
+  const { data, loading, error, reload } = useAsync(
+    () => quotationApi.listQuotations({ page, limit: 20 }),
+    [page]
+  );
+  const rows = data?.quotation || [];
+  const [open, setOpen] = useState(null);
+
+  return (
+    <div className="space-y-4">
+      <Msg error={error} />
+      {loading ? (
+        <p className="text-sm text-ink-3">Loading quotations…</p>
+      ) : (
+        <Table
+          head={["Ref", "Customer", "Type", "Items", "Total", "Status", ""]}
+        >
+          {rows.map((q) => (
+            <tr key={q._id} className="border-b border-line last:border-0">
+              <td className="px-4 py-3 font-bold">
+                {q.refNumber}
+                <span className="block text-xs font-normal text-ink-3">
+                  {new Date(q.createdAt).toLocaleDateString("en-IN")}
+                </span>
+              </td>
+              <td className="px-4 py-3">
+                {q.name || "—"}
+                <span className="block text-xs text-ink-3">{q.phone}</span>
+              </td>
+              <td className="px-4 py-3">{q.type || "—"}</td>
+              <td className="px-4 py-3">{(q.items || []).length}</td>
+              <td className="px-4 py-3 font-bold">{formatINR(q.total || 0)}</td>
+              <td className="px-4 py-3">
+                <span className="rounded bg-canvas px-2 py-1 text-xs font-bold">
+                  {q.status}
+                </span>
+              </td>
+              <td className="px-4 py-3">
+                <button
+                  onClick={() => setOpen(q)}
+                  className="text-xs font-bold text-flame hover:underline"
+                >
+                  Manage
+                </button>
+              </td>
+            </tr>
+          ))}
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={7} className="px-4 py-8 text-center text-ink-3">
+                No quotations
+              </td>
+            </tr>
+          )}
+        </Table>
+      )}
+
+      <Pager page={page} setPage={setPage} hasNext={rows.length >= 20} />
+
+      {open && (
+        <QuotationModal
+          quotation={open}
+          onClose={() => setOpen(null)}
+          onSaved={() => {
+            setOpen(null);
+            reload();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function QuotationModal({ quotation, onClose, onSaved }) {
+  const [f, setF] = useState({
+    status: quotation.status,
+    subTotal: quotation.subTotal ?? 0,
+    tax: quotation.tax ?? 0,
+    shipping: quotation.shipping ?? 0,
+    validTill: quotation.validTill ? isoDay(quotation.validTill) : "",
+    message: "",
+  });
+  const [lines, setLines] = useState(
+    (quotation.items || []).map((it) => ({
+      id: it._id,
+      label: it.product ? "Product item" : "Custom item",
+      qty: it.qty,
+      unitPrice: it.unitPrice ?? 0,
+      tax: it.tax ?? 0,
+    }))
+  );
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+  const [saving, setSaving] = useState(false);
+  const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
+  const setLine = (i, k, v) =>
+    setLines((s) => s.map((l, j) => (j === i ? { ...l, [k]: v } : l)));
+
+  const computedSubtotal = lines.reduce(
+    (n, l) => n + Number(l.unitPrice || 0) * Number(l.qty || 0),
+    0
+  );
+
+  const save = async () => {
+    setErr("");
+    setOk("");
+    setSaving(true);
+    try {
+      await quotationApi.updateQuotationByAdmin(quotation._id, {
+        status: f.status,
+        subTotal: Number(f.subTotal),
+        tax: Number(f.tax),
+        shipping: Number(f.shipping),
+        validTill: f.validTill || undefined,
+        message: f.message || undefined,
+        items: lines.map((l) => ({
+          id: l.id,
+          unitPrice: Number(l.unitPrice),
+          tax: Number(l.tax),
+        })),
+      });
+      setOk("Quotation updated");
+      onSaved();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title={`Quotation ${quotation.refNumber}`} onClose={onClose} wide>
+      <div className="space-y-4 text-sm">
+        <div className="rounded-lg border border-line bg-canvas p-3 text-xs">
+          <p>
+            <b>{quotation.name}</b> · {quotation.phone}
+            {quotation.email ? ` · ${quotation.email}` : ""}
+          </p>
+          {quotation.company && <p>Company: {quotation.company}</p>}
+          {quotation.requirements && (
+            <p className="mt-1">{quotation.requirements}</p>
+          )}
+          {quotation.shippingAddress?.city && (
+            <p className="mt-1 text-ink-3">
+              Ship to: {quotation.shippingAddress.addressLine1},{" "}
+              {quotation.shippingAddress.city}, {quotation.shippingAddress.state}{" "}
+              {quotation.shippingAddress.pincode}
+            </p>
+          )}
+        </div>
+
+        {(quotation.files || []).length > 0 && (
+          <div>
+            <p className="mb-1 text-xs font-bold uppercase tracking-wide text-ink-4">
+              Files
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {quotation.files.map((file) => (
+                <a
+                  key={file._id}
+                  href={file.fileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded border border-line px-2 py-1 text-xs font-semibold text-flame hover:underline"
+                >
+                  {file.fileName || "file"}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <p className="mb-1 text-xs font-bold uppercase tracking-wide text-ink-4">
+            Line items
+          </p>
+          <div className="space-y-2">
+            {lines.map((l, i) => (
+              <div key={l.id} className="flex flex-wrap items-center gap-2">
+                <span className="min-w-[110px] flex-1 text-xs">
+                  {l.label} · ×{l.qty}
+                </span>
+                <input
+                  type="number"
+                  placeholder="Unit price"
+                  value={l.unitPrice}
+                  onChange={(e) => setLine(i, "unitPrice", e.target.value)}
+                  className="h-9 w-28 rounded-md border border-line px-2 text-sm"
+                />
+                <input
+                  type="number"
+                  placeholder="Tax"
+                  value={l.tax}
+                  onChange={(e) => setLine(i, "tax", e.target.value)}
+                  className="h-9 w-24 rounded-md border border-line px-2 text-sm"
+                />
+              </div>
+            ))}
+            {lines.length === 0 && (
+              <p className="text-xs text-ink-3">No line items</p>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-ink-3">
+            Computed line subtotal: {formatINR(computedSubtotal)}
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field
+            label="Status"
+            value={f.status}
+            onChange={set("status")}
+            options={QUOTATION_STATUSES.map((s) => ({ value: s, label: s }))}
+          />
+          <Field
+            label="Valid till"
+            type="date"
+            value={f.validTill}
+            onChange={set("validTill")}
+          />
+          <Field
+            label="Sub total"
+            type="number"
+            value={f.subTotal}
+            onChange={set("subTotal")}
+          />
+          <Field label="Tax" type="number" value={f.tax} onChange={set("tax")} />
+          <Field
+            label="Shipping"
+            type="number"
+            value={f.shipping}
+            onChange={set("shipping")}
+          />
+        </div>
+
+        <label className="block">
+          <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-ink-4">
+            Message to customer
+          </span>
+          <textarea
+            value={f.message}
+            onChange={(e) => set("message")(e.target.value)}
+            rows={2}
+            className="w-full rounded-md border border-line px-3 py-2 text-sm outline-none focus:border-flame"
+          />
+        </label>
+
+        <Msg error={err} ok={ok} />
+        <Btn onClick={save} disabled={saving}>
+          {saving ? "Saving…" : "Save quotation"}
+        </Btn>
+
+        {(quotation.messages || []).length > 0 && (
+          <div className="border-t border-line pt-3">
+            <p className="mb-1 text-xs font-bold uppercase tracking-wide text-ink-4">
+              Conversation
+            </p>
+            <div className="space-y-1.5">
+              {quotation.messages.map((m) => (
+                <p key={m._id} className="text-xs">
+                  <b>{m.sender}:</b> {m.message}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }

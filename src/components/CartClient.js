@@ -9,8 +9,17 @@ import { formatINR } from "@/lib/format";
 
 export default function CartClient() {
   const router = useRouter();
-  const { lines, count, subtotal, savings, delivery, total, setQty, remove } =
-    useCart();
+  const {
+    lines,
+    count,
+    subtotal,
+    savings,
+    delivery,
+    total,
+    setQty,
+    remove,
+    clear,
+  } = useCart();
 
   if (lines.length === 0) return <EmptyCart />;
 
@@ -31,12 +40,23 @@ export default function CartClient() {
             <h1 className="font-display text-lg font-extrabold tracking-tight text-ink">
               My cart ({count})
             </h1>
-            <Link
-              href="/shop"
-              className="text-xs font-bold text-flame hover:underline"
-            >
-              Continue shopping
-            </Link>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => {
+                  if (window.confirm("Remove all items from your cart?"))
+                    clear();
+                }}
+                className="text-xs font-bold text-ink-3 transition-colors hover:text-flame"
+              >
+                Clear cart
+              </button>
+              <Link
+                href="/shop"
+                className="text-xs font-bold text-flame hover:underline"
+              >
+                Continue shopping
+              </Link>
+            </div>
           </div>
 
           {lines.map((l) => {

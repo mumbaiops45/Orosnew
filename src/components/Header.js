@@ -137,15 +137,17 @@ export default function Header() {
 
           <div className="flex shrink-0 items-center gap-2 lg:gap-3">
             <Link
-              href="/bulk"
+              href="/custom"
               className="hidden items-center gap-2.5 rounded-xl border border-neon/35 bg-night-2 px-4 py-2 transition-colors hover:border-neon xl:flex"
             >
               <Diamond size={20} className="text-neon-2" />
               <span className="leading-tight">
                 <span className="block text-sm font-bold text-white">
-                  Bulk Orders
+                  Custom Order
                 </span>
-                <span className="block text-[11px] text-white/50">Best deals</span>
+                <span className="block text-[11px] text-white/50">
+                  Made to spec
+                </span>
               </span>
             </Link>
 
@@ -233,8 +235,8 @@ export default function Header() {
 
             <li className="w-[104px] shrink-0">
               <Link
-                href="/bulk"
-                title="Wholesale"
+                href="/custom"
+                title="Custom order"
                 className="group flex w-full min-w-0 flex-col items-center gap-1 rounded-xl border border-gold/60 px-1 py-1.5 transition-colors hover:bg-gold/10"
               >
                 <span
@@ -248,7 +250,7 @@ export default function Header() {
                     OROS
                   </span>
                   <span className="mt-0.5 block w-full truncate text-[13px] font-bold text-gold">
-                    Wholesale
+                    Custom
                   </span>
                 </span>
               </Link>

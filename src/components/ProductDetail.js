@@ -13,17 +13,23 @@ import {
   ShieldCheck,
   Check,
   Cube,
+  Stack,
+  ArrowRight,
 } from "@phosphor-icons/react";
 import { gsap, useGSAP, prefersReducedMotion } from "@/lib/gsap";
 import ProductImage from "@/components/ProductImage";
 import { useCartStore } from "@/store/cartStore";
-import { useAuthStore } from "@/store/authStore";
+import { useAuthStore, useUser } from "@/store/authStore";
 import { formatINR, colorHex, unitPriceFor } from "@/lib/format";
+
+// at this quantity the PDP nudges the customer into the bulk-quote flow
+const BULK_THRESHOLD = 25;
 
 export default function ProductDetail({ product: p }) {
   const router = useRouter();
   const add = useCartStore((s) => s.add);
   const token = useAuthStore((s) => s.token);
+  const { isSignedIn, isCustomer } = useUser();
 
   // one selected value per option, keyed by option name. Nothing is
   // pre-selected — if a product has variants the customer must pick each
@@ -67,6 +73,12 @@ export default function ProductDetail({ product: p }) {
     if (!token) {
       setOptError("");
       window.dispatchEvent(new CustomEvent("oros:require-auth"));
+      return false;
+    }
+    if (isSignedIn && !isCustomer) {
+      setOptError(
+        "Cart and checkout are for customer accounts only. Sign in with a customer account to shop."
+      );
       return false;
     }
     const missing = missingOption();
@@ -220,6 +232,12 @@ export default function ProductDetail({ product: p }) {
               per unit
               {p.taxRate ? ` · +${p.taxRate}% tax` : " · inclusive of taxes"}
             </span>
+            {tiered && (
+              <span className="w-full text-xs font-semibold text-ink-3">
+                Base price {formatINR(p.price)} · bulk rate shown for {qty}{" "}
+                unit{qty === 1 ? "" : "s"}
+              </span>
+            )}
           </div>
 
           {/* ── Options — fully dynamic from the backend ── */}
@@ -311,19 +329,30 @@ export default function ProductDetail({ product: p }) {
                 </button>
               </div>
 
-              {tiers.length > 1 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {tiers.map((t) => (
-                    <button
-                      key={t.minQty}
-                      onClick={() => setQty(t.minQty)}
-                      className="rounded-lg border border-line px-3 py-2 text-xs font-bold text-ink-2 transition-colors hover:border-flame hover:text-flame"
-                    >
-                      {t.minQty}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <div className="flex flex-wrap gap-1.5">
+                {[25, 50, 75].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setQty(n)}
+                    className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${
+                      qty === n
+                        ? "border-neon bg-neon/10 text-neon"
+                        : "border-line text-ink-2 hover:border-flame hover:text-flame"
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+                {tiers.slice(1).map((t) => (
+                  <button
+                    key={t.minQty}
+                    onClick={() => setQty(t.minQty)}
+                    className="rounded-lg border border-line px-3 py-2 text-xs font-bold text-ink-2 transition-colors hover:border-flame hover:text-flame"
+                  >
+                    {t.minQty}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {tiers.length > 1 && (
@@ -341,6 +370,35 @@ export default function ProductDetail({ product: p }) {
             <p className="mt-4 rounded-lg bg-flame-lt px-3 py-2 text-sm font-bold text-flame">
               {optError}
             </p>
+          )}
+
+          {/* ── Bulk-order nudge ── */}
+          {qty >= BULK_THRESHOLD && (
+            <div className="mt-8 rounded-2xl border-2 border-neon bg-neon/10 p-5">
+              <div className="flex items-start gap-3">
+                <Stack
+                  size={22}
+                  weight="fill"
+                  className="mt-0.5 shrink-0 text-neon"
+                />
+                <div>
+                  <p className="font-display text-base font-extrabold text-ink">
+                    Ordering {qty} or more?
+                  </p>
+                  <p className="mt-1 text-sm text-ink-2">
+                    Get a bulk quote — slab pricing on {p.name}, a GST invoice,
+                    negotiated freight and a lead time confirmed by the desk.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href={`/bulk?product=${p.slug || p.id}&qty=${qty}`}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-neon py-3.5 text-sm font-extrabold uppercase tracking-wide text-white transition-opacity hover:opacity-90"
+              >
+                Start bulk order
+                <ArrowRight size={15} weight="bold" />
+              </Link>
+            </div>
           )}
 
           {/* ── Total + actions ── */}
@@ -474,10 +532,13 @@ export default function ProductDetail({ product: p }) {
                 ))}
               </div>
               <Link
-                href="/bulk?custom"
-                className="mt-5 inline-flex items-center gap-1.5 text-sm font-bold text-flame hover:underline"
+                href={`/bulk?product=${p.slug || p.id}&qty=${Math.max(
+                  qty,
+                  BULK_THRESHOLD
+                )}`}
+                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-flame px-5 py-3 text-sm font-extrabold uppercase tracking-wide text-white transition-colors hover:bg-flame-dk"
               >
-                Need a custom quote? Talk to the wholesale desk
+                Get a bulk quote
                 <CaretRight size={14} weight="bold" />
               </Link>
             </div>

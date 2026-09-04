@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Lightning } from "@phosphor-icons/react";
 import ProductImage from "@/components/ProductImage";
 import { useCartStore } from "@/store/cartStore";
-import { useAuthStore } from "@/store/authStore";
+import { useAuthStore, useUser } from "@/store/authStore";
 import { formatINR, discountPct } from "@/lib/format";
 
 export function PriceBlock({ product, size = "md" }) {
@@ -42,6 +42,7 @@ export function PriceBlock({ product, size = "md" }) {
 export default function ProductCard({ product: p, className = "" }) {
   const add = useCartStore((s) => s.add);
   const token = useAuthStore((s) => s.token);
+  const { isSignedIn, isCustomer } = useUser();
   const router = useRouter();
   const art = useRef(null);
 
@@ -52,6 +53,18 @@ export default function ProductCard({ product: p, className = "" }) {
     // no login, no cart — ask them to sign in
     if (!token) {
       window.dispatchEvent(new CustomEvent("oros:require-auth"));
+      return;
+    }
+
+    // signed in as admin / staff — the cart is customer-only
+    if (isSignedIn && !isCustomer) {
+      window.dispatchEvent(
+        new CustomEvent("oros:require-customer", {
+          detail: {
+            message: "Cart is for customer accounts only.",
+          },
+        })
+      );
       return;
     }
 

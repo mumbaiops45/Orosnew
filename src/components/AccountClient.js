@@ -11,17 +11,28 @@ import {
   SignOut,
   UserCircle,
   Check,
+  FileText,
 } from "@phosphor-icons/react";
 import { useAuthStore, useUser } from "@/store/authStore";
 import { formatINR } from "@/lib/format";
+import { fetchProducts } from "@/lib/catalog";
+import { payForOrder } from "@/lib/razorpay";
+import QuotationThread from "@/components/QuotationThread";
 import * as userApi from "@/api/user.api";
 import * as orderApi from "@/api/order.api";
+import * as quotationApi from "@/api/quotation.api";
 
 const TABS = [
   { id: "dashboard", label: "Dashboard", icon: SquaresFour },
   { id: "orders", label: "My orders", icon: Package },
+  { id: "quotations", label: "Quotations", icon: FileText },
   { id: "profile", label: "Edit profile", icon: PencilSimple },
 ];
+
+// backend blocks cancellation once production has started or the order is done
+const NON_CANCELLABLE = ["IN_PRODUCTION", "COMPLETED", "CANCELLED"];
+const canCancelOrder = (o) =>
+  o?.source === "STORE" && !NON_CANCELLABLE.includes(o?.status);
 
 const STATUS_TONE = {
   PENDING_PAYMENT: "bg-gold-lt text-gold-dk",
@@ -45,6 +56,9 @@ export default function AccountClient() {
 
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
+  const [quotes, setQuotes] = useState([]);
+  const [quotesLoading, setQuotesLoading] = useState(true);
+  const [productMap, setProductMap] = useState(() => new Map());
 
   // gate — no token, no account
   useEffect(() => {
@@ -54,8 +68,9 @@ export default function AccountClient() {
     }
   }, [hydrated, token, router]);
 
-  useEffect(() => {
+  const loadOrders = () => {
     if (!token) return;
+    setOrdersLoading(true);
     orderApi
       .getMyOrders()
       .then((res) => {
@@ -64,7 +79,30 @@ export default function AccountClient() {
       })
       .catch(() => setOrders([]))
       .finally(() => setOrdersLoading(false));
+  };
+
+  const loadQuotes = () => {
+    if (!token) return;
+    quotationApi
+      .listQuotations({ limit: 50 })
+      .then((res) => setQuotes(res?.quotation || []))
+      .catch(() => setQuotes([]))
+      .finally(() => setQuotesLoading(false));
+  };
+
+  useEffect(() => {
+    loadOrders();
+    loadQuotes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  useEffect(() => {
+    fetchProducts({ limit: 200 })
+      .then(({ products }) =>
+        setProductMap(new Map(products.map((p) => [String(p.id), p])))
+      )
+      .catch(() => {});
+  }, []);
 
   const stats = useMemo(() => {
     const paid = orders.filter((o) =>
@@ -75,6 +113,16 @@ export default function AccountClient() {
     const spent = paid.reduce((n, o) => n + (o.pricing?.total || 0), 0);
     return { total: orders.length, paid: paid.length, spent };
   }, [orders]);
+
+  const cancelOrder = async (id) => {
+    const res = await orderApi.cancelOrder(id);
+    const updated = res?.order || res?.data?.order || null;
+    setOrders((list) =>
+      list.map((o) =>
+        o._id === id ? { ...o, ...(updated || { status: "CANCELLED" }) } : o
+      )
+    );
+  };
 
   const go = (id) =>
     router.push(id === "dashboard" ? "/account" : `/account?tab=${id}`);
@@ -144,7 +192,20 @@ export default function AccountClient() {
             <Dashboard stats={stats} orders={orders} loading={ordersLoading} onGo={go} />
           )}
           {tab === "orders" && (
-            <Orders orders={orders} loading={ordersLoading} />
+            <Orders
+              orders={orders}
+              loading={ordersLoading}
+              onCancel={cancelOrder}
+              onChange={loadOrders}
+            />
+          )}
+          {tab === "quotations" && (
+            <Quotations
+              quotes={quotes}
+              loading={quotesLoading}
+              productMap={productMap}
+              onChange={loadQuotes}
+            />
           )}
           {tab === "profile" && <ProfileForm />}
         </div>
@@ -204,7 +265,45 @@ function Dashboard({ stats, orders, loading, onGo }) {
   );
 }
 
-function Orders({ orders, loading }) {
+function Quotations({ quotes, loading, productMap, onChange }) {
+  if (loading)
+    return <p className="text-sm text-ink-3">Loading your quotations…</p>;
+  if (quotes.length === 0)
+    return (
+      <div className="rounded-xl border border-line bg-shell px-6 py-16 text-center">
+        <p className="font-display text-lg font-extrabold text-ink">
+          No quotations yet
+        </p>
+        <p className="mt-1 text-sm text-ink-3">
+          Bulk and custom requests you send the desk show up here — with the
+          desk's pricing, the conversation and a Pay button once it's final.
+        </p>
+        <div className="mt-4 flex justify-center gap-3">
+          <Link
+            href="/custom"
+            className="rounded-md bg-flame px-6 py-2.5 text-sm font-extrabold uppercase tracking-wide text-white hover:bg-flame-dk"
+          >
+            Start a custom order
+          </Link>
+        </div>
+      </div>
+    );
+  return (
+    <ul className="space-y-3">
+      {quotes.map((q) => (
+        <li key={q._id} className="rounded-xl border border-line bg-shell p-5">
+          <QuotationThread
+            quotation={q}
+            productMap={productMap}
+            onChange={onChange}
+          />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Orders({ orders, loading, onCancel, onChange }) {
   if (loading)
     return <p className="text-sm text-ink-3">Loading your orders…</p>;
   if (orders.length === 0)
@@ -225,15 +324,49 @@ function Orders({ orders, loading }) {
     <ul className="space-y-3">
       {orders.map((o) => (
         <li key={o._id} className="rounded-xl border border-line bg-shell">
-          <OrderRow order={o} expanded />
+          <OrderRow order={o} expanded onCancel={onCancel} onChange={onChange} />
         </li>
       ))}
     </ul>
   );
 }
 
-function OrderRow({ order, expanded = false }) {
+function OrderRow({ order, expanded = false, onCancel, onChange }) {
   const items = order.items || [];
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [paying, setPaying] = useState(false);
+  const [payErr, setPayErr] = useState("");
+
+  const pay = async () => {
+    setPayErr("");
+    setPaying(true);
+    try {
+      await payForOrder(order, {
+        name: order.shippingAddress?.name,
+        contact: order.shippingAddress?.phone,
+      });
+      await onChange?.();
+    } catch (e) {
+      setPayErr(e.message || "Payment could not be completed");
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const cancel = async () => {
+    if (!window.confirm("Cancel this order? This can't be undone.")) return;
+    setErr("");
+    setBusy(true);
+    try {
+      await onCancel(order._id);
+    } catch (e) {
+      setErr(e.message || "Could not cancel the order");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="px-5 py-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -280,6 +413,17 @@ function OrderRow({ order, expanded = false }) {
           ))}
         </ul>
       )}
+      {expanded && (order.shipping?.courierName || order.shipping?.estimatedDelivery) && (
+        <p className="mt-2 text-[11px] text-ink-3">
+          Delivery: {order.shipping.courierName || "Courier"}
+          {order.shipping.estimatedDelivery
+            ? ` · est. ${new Date(order.shipping.estimatedDelivery).toLocaleDateString(
+                "en-IN",
+                { day: "numeric", month: "short", year: "numeric" }
+              )}`
+            : ""}
+        </p>
+      )}
       {expanded && order.payment?.status && (
         <p className="mt-2 text-[11px] text-ink-3">
           Payment: {order.payment.status}
@@ -287,6 +431,40 @@ function OrderRow({ order, expanded = false }) {
             ? ` · ${order.payment.transactionId}`
             : ""}
         </p>
+      )}
+
+      {expanded && order.status === "PENDING_PAYMENT" && (
+        <div className="mt-3 border-t border-line pt-3">
+          <button
+            onClick={pay}
+            disabled={paying}
+            className="rounded-md bg-flame px-4 py-2 text-xs font-extrabold uppercase tracking-wide text-white transition-colors hover:bg-flame-dk disabled:opacity-60"
+          >
+            {paying
+              ? "Opening…"
+              : `Pay ${formatINR(order.pricing?.total || 0)}`}
+          </button>
+          {payErr && (
+            <p className="mt-1.5 text-[11px] font-semibold text-flame">
+              {payErr}
+            </p>
+          )}
+        </div>
+      )}
+
+      {expanded && onCancel && canCancelOrder(order) && (
+        <div className="mt-3 border-t border-line pt-3">
+          <button
+            onClick={cancel}
+            disabled={busy}
+            className="rounded-md border border-flame px-3 py-1.5 text-xs font-bold text-flame transition-colors hover:bg-flame-lt disabled:opacity-60"
+          >
+            {busy ? "Cancelling…" : "Cancel order"}
+          </button>
+          {err && (
+            <p className="mt-1.5 text-[11px] font-semibold text-flame">{err}</p>
+          )}
+        </div>
       )}
     </div>
   );

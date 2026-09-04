@@ -13,26 +13,31 @@ import {
 } from "@phosphor-icons/react";
 import ProductImage from "@/components/ProductImage";
 import { useCart } from "@/store/cartStore";
-import { useAuthStore } from "@/store/authStore";
+import { useAuthStore, useUser } from "@/store/authStore";
 import { formatINR } from "@/lib/format";
 import * as addressApi from "@/api/address.api";
 import * as couponApi from "@/api/coupon.api";
 import * as shippingApi from "@/api/shipping.api";
 import * as orderApi from "@/api/order.api";
-import * as paymentApi from "@/api/payment.api";
+import { payForOrder } from "@/lib/razorpay";
 
-const RZP_SRC = "https://checkout.razorpay.com/v1/checkout.js";
-
-function loadRazorpay() {
-  return new Promise((resolve) => {
-    if (typeof window === "undefined") return resolve(false);
-    if (window.Razorpay) return resolve(true);
-    const s = document.createElement("script");
-    s.src = RZP_SRC;
-    s.onload = () => resolve(true);
-    s.onerror = () => resolve(false);
-    document.body.appendChild(s);
-  });
+/**
+ * Shiprocket returns `etd` as a date string ("Sep 12, 2026"); some couriers
+ * give a day count instead. Render whichever we got as a friendly line.
+ */
+function formatEta(etd) {
+  if (etd == null || etd === "") return null;
+  const d = new Date(etd);
+  if (!Number.isNaN(d.getTime())) {
+    return d.toLocaleDateString("en-IN", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    });
+  }
+  const n = Number(etd);
+  if (Number.isFinite(n)) return `${n} day${n === 1 ? "" : "s"}`;
+  return String(etd);
 }
 
 const EMPTY_ADDRESS = {
@@ -51,6 +56,7 @@ export default function CheckoutClient() {
   const { lines, count, subtotal, savings, clear } = useCart();
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
+  const { isSignedIn, isCustomer } = useUser();
 
   const [address, setAddress] = useState(EMPTY_ADDRESS);
   const [savedAddress, setSavedAddress] = useState(null);
@@ -63,6 +69,8 @@ export default function CheckoutClient() {
 
   const [shipping, setShipping] = useState(null); // { quoteId, rates }
   const [courierId, setCourierId] = useState(null);
+  const [ratesLoading, setRatesLoading] = useState(false);
+  const [ratesError, setRatesError] = useState("");
 
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
@@ -92,6 +100,103 @@ export default function CheckoutClient() {
     }
   }, [user]);
 
+  // Re-check the applied coupon whenever the cart subtotal moves. The server
+  // re-validates min-order-value and recomputes the discount when the order is
+  // placed, so a stale client-side discount would otherwise make checkout fail.
+  useEffect(() => {
+    if (!coupon?.code) return;
+    let cancelled = false;
+    couponApi
+      .validateCoupon(coupon.code, subtotal)
+      .then((data) => {
+        if (!cancelled) setCoupon({ code: coupon.code, ...data });
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setCoupon(null);
+          setCouponErr(
+            `${coupon.code} removed — ${e.message}`
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subtotal]);
+
+  const addressComplete = [
+    "name",
+    "phone",
+    "addressLine1",
+    "city",
+    "state",
+    "country",
+    "pincode",
+  ].every((k) => address[k]?.toString().trim());
+
+  // As soon as the address is filled in, pull live courier rates so the
+  // delivery options + total on the right update without waiting for payment.
+  useEffect(() => {
+    if (!addressComplete || !/^\d{6}$/.test(address.pincode)) return;
+
+    // a still-valid quote already covers this destination
+    if (
+      shipping?.deliveryPincode === address.pincode &&
+      shipping?.expiresAt &&
+      new Date(shipping.expiresAt).getTime() > Date.now() + 60_000
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      setRatesError("");
+      setRatesLoading(true);
+      try {
+        await addressApi.saveAddress(address);
+        const data = await shippingApi.getShippingRates({
+          deliveryPincode: address.pincode,
+        });
+        if (cancelled) return;
+        setShipping(data);
+        const rates = data.rates || [];
+        const cheapest = [...rates].sort(
+          (a, b) => (a.totalCharge || 0) - (b.totalCharge || 0)
+        )[0];
+        setCourierId((cur) =>
+          rates.some((r) => Number(r.courierId) === Number(cur))
+            ? cur
+            : cheapest?.courierId ?? null
+        );
+      } catch (e) {
+        if (cancelled) return;
+        setShipping(null);
+        setCourierId(null);
+        setRatesError(e.message);
+      } finally {
+        if (!cancelled) setRatesLoading(false);
+      }
+    }, 700);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    addressComplete,
+    address.pincode,
+    address.addressLine1,
+    address.addressLine2,
+    address.city,
+    address.state,
+    address.country,
+    address.name,
+    address.phone,
+    shipping,
+  ]);
+
   const selectedRate = useMemo(
     () =>
       shipping?.rates?.find(
@@ -101,7 +206,7 @@ export default function CheckoutClient() {
   );
 
   const deliveryCharge = selectedRate?.totalCharge ?? 0;
-  const discount = coupon?.discount ?? 0;
+  const discount = Math.min(coupon?.discount ?? 0, subtotal);
   const total = Math.max(0, subtotal + deliveryCharge - discount);
 
   if (placed) return <OrderPlaced order={placed} />;
@@ -144,16 +249,6 @@ export default function CheckoutClient() {
     }
   };
 
-  const addressComplete = [
-    "name",
-    "phone",
-    "addressLine1",
-    "city",
-    "state",
-    "country",
-    "pincode",
-  ].every((k) => address[k]?.toString().trim());
-
   const fetchRates = async () => {
     setError("");
     if (!/^\d{6}$/.test(address.pincode))
@@ -163,11 +258,18 @@ export default function CheckoutClient() {
       deliveryPincode: address.pincode,
     });
     setShipping(data);
-    const cheapest = [...(data.rates || [])].sort(
+    const rates = data.rates || [];
+    const cheapest = [...rates].sort(
       (a, b) => (a.totalCharge || 0) - (b.totalCharge || 0)
     )[0];
-    setCourierId(cheapest ? cheapest.courierId : null);
-    return { data, courier: cheapest?.courierId };
+    // keep the courier the customer already picked when it's still on offer
+    const chosen = rates.some(
+      (r) => Number(r.courierId) === Number(courierId)
+    )
+      ? courierId
+      : cheapest?.courierId ?? null;
+    setCourierId(chosen);
+    return { data, courier: chosen };
   };
 
   const payNow = async () => {
@@ -176,16 +278,26 @@ export default function CheckoutClient() {
       window.dispatchEvent(new CustomEvent("oros:require-auth"));
       return;
     }
+    if (isSignedIn && !isCustomer) {
+      setError(
+        "Checkout is for customer accounts only. Sign in with a customer account to place an order."
+      );
+      return;
+    }
     if (!addressComplete) {
       setError("Please complete the delivery address");
       return;
     }
     setPlacing(true);
     try {
-      // 1. address + shipping rate
+      // 1. address + shipping rate — re-quote if the pre-fetched one is
+      // missing or past its 10-minute validity
       let quoteId = shipping?.quoteId;
       let courier = courierId;
-      if (!quoteId || !courier) {
+      const stale =
+        shipping?.expiresAt &&
+        new Date(shipping.expiresAt).getTime() <= Date.now();
+      if (!quoteId || !courier || stale) {
         const r = await fetchRates();
         quoteId = r.data.quoteId;
         courier = r.courier;
@@ -200,44 +312,11 @@ export default function CheckoutClient() {
         couponCode: coupon?.code || undefined,
       });
 
-      // 3. razorpay order
-      const rzpOrder = await paymentApi.createPaymentOrder(order._id);
-
-      const ok = await loadRazorpay();
-      if (!ok) throw new Error("Could not load the payment gateway");
-
-      // 4. open checkout
-      await new Promise((resolve, reject) => {
-        const rzp = new window.Razorpay({
-          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-          order_id: rzpOrder.id,
-          amount: rzpOrder.amount,
-          currency: rzpOrder.currency || "INR",
-          name: "OROS",
-          description: `Order ${order._id}`,
-          prefill: {
-            name: address.name,
-            contact: address.phone,
-            email: user?.email || "",
-          },
-          theme: { color: "#ff5a2c" },
-          handler: async (resp) => {
-            try {
-              await paymentApi.verifyPayment({
-                razorpay_order_id: resp.razorpay_order_id,
-                razorpay_payment_id: resp.razorpay_payment_id,
-                razorpay_signature: resp.razorpay_signature,
-              });
-              resolve();
-            } catch (e) {
-              reject(e);
-            }
-          },
-          modal: {
-            ondismiss: () => reject(new Error("Payment cancelled")),
-          },
-        });
-        rzp.open();
+      // 3. pay + verify
+      await payForOrder(order, {
+        name: address.name,
+        contact: address.phone,
+        email: user?.email || "",
       });
 
       clear();
@@ -247,6 +326,12 @@ export default function CheckoutClient() {
         count,
         name: address.name,
         pin: address.pincode,
+        placedAt: order.createdAt || Date.now(),
+        eta:
+          order.shipping?.estimatedDelivery ||
+          selectedRate?.estimatedDays ||
+          null,
+        courier: order.shipping?.courierName || selectedRate?.courierName || null,
       });
     } catch (e) {
       setError(e.message);
@@ -353,13 +438,35 @@ export default function CheckoutClient() {
               />
             </div>
 
-            {shipping?.rates?.length > 0 && (
+            {(ratesLoading || ratesError || shipping?.rates?.length > 0) && (
               <div className="mt-4 border-t border-line pt-4">
                 <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink-4">
                   Delivery option
                 </p>
+
+                {ratesLoading && (
+                  <p className="text-xs text-ink-3">
+                    Fetching delivery options for {address.pincode}…
+                  </p>
+                )}
+
+                {!ratesLoading && ratesError && (
+                  <div className="flex items-center justify-between gap-3 rounded-md bg-flame-lt px-3 py-2">
+                    <p className="text-xs font-semibold text-flame">
+                      {ratesError}
+                    </p>
+                    <button
+                      onClick={() => fetchRates().catch((e) => setRatesError(e.message))}
+                      className="shrink-0 text-xs font-bold text-flame underline"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+
                 <div className="space-y-2">
-                  {shipping.rates.map((r) => (
+                  {!ratesLoading &&
+                    (shipping?.rates || []).map((r) => (
                     <label
                       key={r.courierId}
                       className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm transition-colors ${
@@ -375,8 +482,15 @@ export default function CheckoutClient() {
                         onChange={() => setCourierId(r.courierId)}
                         className="h-4 w-4 accent-flame"
                       />
-                      <span className="flex-1 font-semibold text-ink">
-                        {r.courierName}
+                      <span className="flex-1">
+                        <span className="block font-semibold text-ink">
+                          {r.courierName}
+                        </span>
+                        {formatEta(r.estimatedDays) && (
+                          <span className="block text-xs font-medium text-ink-3">
+                            Delivery by {formatEta(r.estimatedDays)}
+                          </span>
+                        )}
                       </span>
                       <span className="font-bold text-ink">
                         {formatINR(r.totalCharge)}
@@ -537,12 +651,22 @@ export default function CheckoutClient() {
                 </Row>
               )}
               <Row label="Delivery" accent={selectedRate && deliveryCharge === 0}>
-                {selectedRate
-                  ? deliveryCharge === 0
-                    ? "Free"
-                    : formatINR(deliveryCharge)
-                  : "At payment"}
+                {ratesLoading
+                  ? "Calculating…"
+                  : selectedRate
+                    ? deliveryCharge === 0
+                      ? "Free"
+                      : formatINR(deliveryCharge)
+                    : "Enter address"}
               </Row>
+              {selectedRate && (
+                <p className="-mt-1 text-xs text-ink-3">
+                  {selectedRate.courierName}
+                  {formatEta(selectedRate.estimatedDays)
+                    ? ` · arrives ${formatEta(selectedRate.estimatedDays)}`
+                    : ""}
+                </p>
+              )}
               <div className="flex items-center justify-between border-t border-dashed border-line pt-3">
                 <span className="font-display text-base font-extrabold text-ink">
                   Total payable
@@ -638,6 +762,16 @@ function OrderPlaced({ order }) {
             <dd className="font-bold text-ink">{order.id}</dd>
           </div>
           <div className="flex justify-between">
+            <dt className="text-ink-3">Order date</dt>
+            <dd className="font-bold text-ink">
+              {new Date(order.placedAt).toLocaleDateString("en-IN", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })}
+            </dd>
+          </div>
+          <div className="flex justify-between">
             <dt className="text-ink-3">Amount paid</dt>
             <dd className="font-bold text-ink">{formatINR(order.total)}</dd>
           </div>
@@ -645,6 +779,15 @@ function OrderPlaced({ order }) {
             <dt className="text-ink-3">Delivering to</dt>
             <dd className="font-bold text-ink">PIN {order.pin}</dd>
           </div>
+          {order.eta && formatEta(order.eta) && (
+            <div className="flex justify-between">
+              <dt className="text-ink-3">Estimated delivery</dt>
+              <dd className="font-bold text-ink">
+                {formatEta(order.eta)}
+                {order.courier ? ` · ${order.courier}` : ""}
+              </dd>
+            </div>
+          )}
         </dl>
 
         <div className="mt-8 flex gap-3">

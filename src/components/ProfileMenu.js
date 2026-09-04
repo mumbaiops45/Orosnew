@@ -10,6 +10,7 @@ import {
   SquaresFour,
   Package,
   PencilSimple,
+  FileText,
   X,
 } from "@phosphor-icons/react";
 import { gsap, useGSAP, prefersReducedMotion } from "@/lib/gsap";
@@ -40,7 +41,7 @@ export default function ProfileMenu() {
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [err, setErr] = useState("");
-  const wrap = useRef(null);
+  const [notice, setNotice] = useState("");
   const greetRef = useRef(null);
 
   // open the modal when something else asks for auth (e.g. add-to-cart)
@@ -54,18 +55,33 @@ export default function ProfileMenu() {
     return () => window.removeEventListener("oros:require-auth", onReq);
   }, []);
 
+  // a signed-in non-customer (admin / staff) tried to use the cart
+  useEffect(() => {
+    let timer;
+    const onBlocked = (e) => {
+      setNotice(
+        e.detail?.message || "Cart is for customer accounts only."
+      );
+      clearTimeout(timer);
+      timer = setTimeout(() => setNotice(""), 4000);
+    };
+    window.addEventListener("oros:require-customer", onBlocked);
+    return () => {
+      window.removeEventListener("oros:require-customer", onBlocked);
+      clearTimeout(timer);
+    };
+  }, []);
+
   useEffect(() => {
     if (!menuOpen) return;
-    const onDown = (e) => {
-      if (!wrap.current?.contains(e.target)) setMenuOpen(false);
-    };
+    // The slide-over below carries its own backdrop and close button for
+    // pointer dismissal. A document-level mousedown listener here would also
+    // fire for the panel's own buttons (they render outside this wrapper),
+    // closing the menu on mousedown so the follow-up click — e.g. "Sign out"
+    // — never lands. Escape is all we add.
     const onKey = (e) => e.key === "Escape" && setMenuOpen(false);
-    document.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
+    return () => window.removeEventListener("keydown", onKey);
   }, [menuOpen]);
 
   useGSAP(
@@ -134,7 +150,12 @@ export default function ProfileMenu() {
 
   return (
     <>
-      <div ref={wrap} className="relative">
+      {notice && (
+        <div className="fixed left-1/2 top-4 z-[95] -translate-x-1/2 rounded-xl bg-ink px-4 py-3 text-sm font-semibold text-white shadow-2xl">
+          {notice}
+        </div>
+      )}
+      <div className="relative">
         {signedIn ? (
           <button
             onClick={() => setMenuOpen((o) => !o)}
@@ -255,6 +276,11 @@ export default function ProfileMenu() {
                     { href: "/admin", label: "Admin panel", icon: SquaresFour },
                     { href: "/admin?tab=orders", label: "Orders", icon: Package },
                     {
+                      href: "/admin?tab=quotations",
+                      label: "Quotations",
+                      icon: FileText,
+                    },
+                    {
                       href: "/account?tab=profile",
                       label: "Edit profile",
                       icon: PencilSimple,
@@ -266,6 +292,11 @@ export default function ProfileMenu() {
                       href: "/account?tab=orders",
                       label: "My orders",
                       icon: Package,
+                    },
+                    {
+                      href: "/account?tab=quotations",
+                      label: "My quotations",
+                      icon: FileText,
                     },
                     {
                       href: "/account?tab=profile",

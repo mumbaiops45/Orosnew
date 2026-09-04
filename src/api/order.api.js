@@ -16,3 +16,10 @@ export const createManualOrder = (body) => api.post("/orders/manual", body);
 /** POST /orders/quotation/:quotationId -> order from an accepted quotation */
 export const createQuotationOrder = (quotationId) =>
   api.post(`/orders/quotation/${quotationId}`);
+
+/** PATCH /orders/:id/cancel -> customer cancels a STORE order before production */
+export const cancelOrder = (id) => api.patch(`/orders/${id}/cancel`);
+
+/** PATCH /orders/:id/status -> admin updates a STORE order's status */
+export const updateOrderStatus = (id, status) =>
+  api.patch(`/orders/${id}/status`, { status });
