@@ -44,6 +44,35 @@ const STATUS_TONE = {
   CANCELLED: "bg-flame-lt text-flame",
 };
 
+const SOURCE_TONE = {
+  STORE: "bg-sky-lt text-sky",
+  QUOTATION: "bg-lilac-lt text-lilac",
+  MANUAL: "bg-gold-lt text-gold-dk",
+};
+
+// STORE / QUOTATION / MANUAL — a quotation-born order also carries the
+// quotation's own BULK / CUSTOM type once /user/profile … order.quotation
+// is populated by the backend
+function SourceBadge({ order }) {
+  const source = order.source || "STORE";
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <span
+        className={`rounded px-2 py-1 text-[11px] font-bold ${
+          SOURCE_TONE[source] || "bg-canvas text-ink-2"
+        }`}
+      >
+        {source}
+      </span>
+      {source === "QUOTATION" && order.quotation?.type && (
+        <span className="rounded bg-canvas px-2 py-1 text-[11px] font-bold text-ink-2">
+          {order.quotation.type}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function AccountClient() {
   const router = useRouter();
   const params = useSearchParams();
@@ -333,6 +362,9 @@ function Orders({ orders, loading, onCancel, onChange }) {
 
 function OrderRow({ order, expanded = false, onCancel, onChange }) {
   const items = order.items || [];
+  // rows that don't start expanded (dashboard "recent orders") can be
+  // clicked/viewed to reveal the same full detail as the main orders list
+  const [open, setOpen] = useState(expanded);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [paying, setPaying] = useState(false);
@@ -370,9 +402,9 @@ function OrderRow({ order, expanded = false, onCancel, onChange }) {
   return (
     <div className="px-5 py-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-sm font-bold text-ink">
-            #{String(order._id).slice(-8).toUpperCase()}
+        <div className="min-w-0">
+          <p className="break-all font-mono text-sm font-bold text-ink">
+            #{String(order._id).toUpperCase()}
           </p>
           <p className="text-xs text-ink-3">
             {new Date(order.createdAt).toLocaleDateString("en-IN", {
@@ -383,6 +415,9 @@ function OrderRow({ order, expanded = false, onCancel, onChange }) {
             {" · "}
             {items.reduce((n, i) => n + (i.qty || 0), 0)} item(s)
           </p>
+          <div className="mt-1.5">
+            <SourceBadge order={order} />
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <span
@@ -395,10 +430,18 @@ function OrderRow({ order, expanded = false, onCancel, onChange }) {
           <span className="font-display text-base font-extrabold text-ink">
             {formatINR(order.pricing?.total || 0)}
           </span>
+          {!expanded && (
+            <button
+              onClick={() => setOpen((v) => !v)}
+              className="text-xs font-bold text-flame hover:underline"
+            >
+              {open ? "Hide" : "View"}
+            </button>
+          )}
         </div>
       </div>
 
-      {expanded && items.length > 0 && (
+      {open && items.length > 0 && (
         <ul className="mt-3 space-y-1.5 border-t border-line pt-3">
           {items.map((it) => (
             <li
@@ -413,7 +456,7 @@ function OrderRow({ order, expanded = false, onCancel, onChange }) {
           ))}
         </ul>
       )}
-      {expanded && (order.shipping?.courierName || order.shipping?.estimatedDelivery) && (
+      {open && (order.shipping?.courierName || order.shipping?.estimatedDelivery) && (
         <p className="mt-2 text-[11px] text-ink-3">
           Delivery: {order.shipping.courierName || "Courier"}
           {order.shipping.estimatedDelivery
@@ -424,7 +467,7 @@ function OrderRow({ order, expanded = false, onCancel, onChange }) {
             : ""}
         </p>
       )}
-      {expanded && order.payment?.status && (
+      {open && order.payment?.status && (
         <p className="mt-2 text-[11px] text-ink-3">
           Payment: {order.payment.status}
           {order.payment.transactionId
@@ -433,7 +476,7 @@ function OrderRow({ order, expanded = false, onCancel, onChange }) {
         </p>
       )}
 
-      {expanded && order.status === "PENDING_PAYMENT" && (
+      {open && order.status === "PENDING_PAYMENT" && (
         <div className="mt-3 border-t border-line pt-3">
           <button
             onClick={pay}
@@ -452,7 +495,7 @@ function OrderRow({ order, expanded = false, onCancel, onChange }) {
         </div>
       )}
 
-      {expanded && onCancel && canCancelOrder(order) && (
+      {open && onCancel && canCancelOrder(order) && (
         <div className="mt-3 border-t border-line pt-3">
           <button
             onClick={cancel}

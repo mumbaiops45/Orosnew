@@ -143,7 +143,7 @@ export default function SearchBox() {
   const showPanel = open && needle.length > 0;
 
   return (
-    <div ref={wrap} className="relative flex-1 lg:max-w-2xl">
+    <div ref={wrap} className="relative min-w-0 flex-1 lg:max-w-2xl">
       <form
         onSubmit={(e) => {
           e.preventDefault();

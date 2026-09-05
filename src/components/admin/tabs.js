@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { X, Trash, PencilSimple, Plus, DownloadSimple } from "@phosphor-icons/react";
+import { X, Trash, PencilSimple, Plus, DownloadSimple, Eye } from "@phosphor-icons/react";
 import { formatINR } from "@/lib/format";
 import * as analyticsApi from "@/api/analytics.api";
 import * as orderApi from "@/api/order.api";
@@ -66,16 +66,26 @@ function Modal({ title, onClose, children, wide }) {
   );
 }
 
-function Field({ label, value, onChange, type = "text", options, ...rest }) {
+function Field({
+  label,
+  value,
+  onChange,
+  type = "text",
+  options,
+  required,
+  ...rest
+}) {
   return (
     <label className="block">
       <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-ink-4">
         {label}
+        {required && <span className="text-flame"> *</span>}
       </span>
       {options ? (
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          required={required}
           className="h-10 w-full rounded-md border border-line bg-shell px-3 text-sm outline-none focus:border-flame"
           {...rest}
         >
@@ -91,6 +101,7 @@ function Field({ label, value, onChange, type = "text", options, ...rest }) {
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          required={required}
           className="h-10 w-full rounded-md border border-line px-3 text-sm outline-none focus:border-flame"
           {...rest}
         />
@@ -513,10 +524,49 @@ const ORDER_TABS = [
   },
   { id: "unpaid", label: "Unpaid", test: (o) => o.status === "PENDING_PAYMENT" },
   { id: "cancelled", label: "Cancelled", test: (o) => o.status === "CANCELLED" },
+  {
+    id: "store",
+    label: "Store",
+    test: (o) => (o.source || "STORE") === "STORE",
+  },
+  {
+    id: "quotation",
+    label: "Quotation",
+    test: (o) => o.source === "QUOTATION",
+  },
+  { id: "manual", label: "Manual", test: (o) => o.source === "MANUAL" },
 ];
 
 function useOrders() {
   return useAsync(() => orderApi.getAdminOrders(), []);
+}
+
+const SOURCE_TONE = {
+  STORE: "bg-sky-lt text-sky",
+  QUOTATION: "bg-lilac-lt text-lilac",
+  MANUAL: "bg-gold-lt text-gold-dk",
+};
+
+// STORE / QUOTATION / MANUAL — for a quotation-born order, also surface
+// whether the underlying quotation was a BULK or CUSTOM request
+function SourceBadge({ order }) {
+  const source = order.source || "STORE";
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <span
+        className={`rounded px-2 py-1 text-[11px] font-bold ${
+          SOURCE_TONE[source] || "bg-canvas text-ink-2"
+        }`}
+      >
+        {source}
+      </span>
+      {source === "QUOTATION" && order.quotation?.type && (
+        <span className="rounded bg-canvas px-2 py-1 text-[11px] font-bold text-ink-2">
+          {order.quotation.type}
+        </span>
+      )}
+    </span>
+  );
 }
 
 // admin-settable statuses for a STORE order (mirrors order.service.js)
@@ -592,15 +642,20 @@ function OrderList({ filterId }) {
   return (
     <>
       <Msg error={error} />
-      <Table head={["Order", "Customer", "Items", "Total", "Status", ""]}>
+      <Table head={["Order", "Source", "Customer", "Items", "Total", "Status", ""]}>
         {rows.map((o) => (
           <>
             <tr key={o._id} className="border-b border-line last:border-0">
               <td className="px-4 py-3 font-bold">
-                #{String(o._id).slice(-8).toUpperCase()}
+                <span className="block font-mono text-xs tracking-tight">
+                  #{String(o._id).toUpperCase()}
+                </span>
                 <span className="block text-xs font-normal text-ink-3">
                   {new Date(o.createdAt).toLocaleDateString("en-IN")}
                 </span>
+              </td>
+              <td className="px-4 py-3">
+                <SourceBadge order={o} />
               </td>
               <td className="px-4 py-3">
                 {o.user?.name || "—"}
@@ -626,7 +681,7 @@ function OrderList({ filterId }) {
             </tr>
             {open === o._id && (
               <tr key={o._id + "-d"}>
-                <td colSpan={6} className="bg-canvas px-4 py-3">
+                <td colSpan={7} className="bg-canvas px-4 py-3">
                   <div className="grid gap-3 text-xs sm:grid-cols-2">
                     <div>
                       <p className="font-bold text-ink-4">SHIPPING</p>
@@ -687,7 +742,7 @@ function OrderList({ filterId }) {
         ))}
         {rows.length === 0 && (
           <tr>
-            <td colSpan={6} className="px-4 py-8 text-center text-ink-3">
+            <td colSpan={7} className="px-4 py-8 text-center text-ink-3">
               No orders
             </td>
           </tr>
@@ -721,17 +776,26 @@ export function Orders() {
 
 /* ══════════ PAYMENTS ══════════ */
 
+const PAYMENT_TABS = [
+  { id: "paid", label: "Paid", test: (o) => o.payment?.status === "PAID" },
+  { id: "unpaid", label: "Unpaid", test: (o) => o.payment?.status !== "PAID" },
+];
+
 export function Payments() {
   const { data, loading, error } = useOrders();
+  const [tab, setTab] = useState("paid");
   const orders = Array.isArray(data) ? data : data?.data || [];
-  const paid = orders.filter((o) => o.payment?.status === "PAID");
+  const paid = orders.filter(PAYMENT_TABS[0].test);
+  const unpaid = orders.filter(PAYMENT_TABS[1].test);
+  const rows = tab === "paid" ? paid : unpaid;
   const collected = paid.reduce((n, o) => n + (o.pricing?.total || 0), 0);
+  const pending = unpaid.reduce((n, o) => n + (o.pricing?.total || 0), 0);
 
   if (loading) return <p className="text-sm text-ink-3">Loading payments…</p>;
   return (
     <div className="space-y-4">
       <Msg error={error} />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-xl border border-line bg-shell p-4">
           <p className="text-xs font-bold uppercase tracking-wide text-ink-4">
             Total collected
@@ -748,17 +812,57 @@ export function Payments() {
             {paid.length}
           </p>
         </div>
+        <div className="rounded-xl border border-line bg-shell p-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-ink-4">
+            Pending amount
+          </p>
+          <p className="mt-1 font-display text-xl font-extrabold">
+            {formatINR(pending)}
+          </p>
+        </div>
+        <div className="rounded-xl border border-line bg-shell p-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-ink-4">
+            Unpaid orders
+          </p>
+          <p className="mt-1 font-display text-xl font-extrabold">
+            {unpaid.length}
+          </p>
+        </div>
       </div>
 
-      <Table head={["Txn / Order", "Customer", "Method", "Amount", "Paid at"]}>
-        {paid.map((o) => (
+      <div className="flex flex-wrap gap-2">
+        {PAYMENT_TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`rounded-full px-4 py-2 text-xs font-bold transition-colors ${
+              tab === t.id
+                ? "bg-ink text-white"
+                : "bg-shell text-ink-2 border border-line"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <Table
+        head={
+          tab === "paid"
+            ? ["Txn / Order", "Customer", "Method", "Amount", "Paid at"]
+            : ["Order", "Customer", "Method", "Amount", "Payment status"]
+        }
+      >
+        {rows.map((o) => (
           <tr key={o._id} className="border-b border-line last:border-0">
             <td className="px-4 py-3">
-              <span className="block font-bold">
-                {o.payment?.transactionId || "—"}
-              </span>
-              <span className="text-xs text-ink-3">
-                #{String(o._id).slice(-8).toUpperCase()}
+              {tab === "paid" && (
+                <span className="block font-bold">
+                  {o.payment?.transactionId || "—"}
+                </span>
+              )}
+              <span className="block font-mono text-xs text-ink-3">
+                #{String(o._id).toUpperCase()}
               </span>
             </td>
             <td className="px-4 py-3">
@@ -769,17 +873,25 @@ export function Payments() {
             <td className="px-4 py-3 font-bold">
               {formatINR(o.pricing?.total || 0)}
             </td>
-            <td className="px-4 py-3 text-xs">
-              {o.payment?.paidAt
-                ? new Date(o.payment.paidAt).toLocaleString("en-IN")
-                : "—"}
-            </td>
+            {tab === "paid" ? (
+              <td className="px-4 py-3 text-xs">
+                {o.payment?.paidAt
+                  ? new Date(o.payment.paidAt).toLocaleString("en-IN")
+                  : "—"}
+              </td>
+            ) : (
+              <td className="px-4 py-3">
+                <span className="rounded bg-flame-lt px-2 py-1 text-[11px] font-bold text-flame">
+                  {o.payment?.status || "PENDING"}
+                </span>
+              </td>
+            )}
           </tr>
         ))}
-        {paid.length === 0 && (
+        {rows.length === 0 && (
           <tr>
             <td colSpan={5} className="px-4 py-8 text-center text-ink-3">
-              No payments yet
+              {tab === "paid" ? "No payments yet" : "No unpaid orders"}
             </td>
           </tr>
         )}
@@ -820,7 +932,7 @@ export function Products() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <BulkImport onDone={reload} />
         <Btn onClick={() => setEditing({})}>
           <Plus size={13} className="mr-1 inline" /> New product
@@ -845,6 +957,15 @@ export function Products() {
               </td>
               <td className="px-4 py-3">
                 <div className="flex gap-1.5">
+                  <a
+                    href={`/shop/${p.slug}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={iconBtn}
+                    aria-label="View"
+                  >
+                    <Eye size={14} />
+                  </a>
                   <button
                     className={iconBtn}
                     onClick={() => setEditing(p)}
@@ -1581,7 +1702,7 @@ function PriceSlabEditor({ productId }) {
           />
         ))}
       </div>
-      <div className="mt-4 flex gap-2 border-t border-line pt-4">
+      <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
         <input
           placeholder="Min qty"
           type="number"
@@ -1601,7 +1722,7 @@ function PriceSlabEditor({ productId }) {
           type="number"
           value={unitPrice}
           onChange={(e) => setUnitPrice(e.target.value)}
-          className="h-9 flex-1 rounded-md border border-line px-3 text-sm outline-none focus:border-flame"
+          className="h-9 min-w-[8rem] flex-1 rounded-md border border-line px-3 text-sm outline-none focus:border-flame"
         />
         <AddBtn onClick={add} />
       </div>
@@ -1830,8 +1951,8 @@ function ValueEditor({ option, onChange }) {
           }}
         />
       ))}
-      <div className="flex items-end gap-2 pt-1">
-        <label className="flex-1">
+      <div className="flex flex-wrap items-end gap-2 pt-1">
+        <label className="min-w-[8rem] flex-1">
           <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-ink-4">
             Value
           </span>
@@ -2403,6 +2524,11 @@ function CouponModal({ row, onClose, onSaved }) {
 
 /* ══════════ USERS ══════════ */
 
+const USER_ROLE_OPTIONS = [
+  { value: "user", label: "Customer" },
+  { value: "staff", label: "Staff" },
+];
+
 export function UsersTab() {
   const { data, loading, error, reload } = useAsync(
     () => userApi.listUsers({ limit: 500 }),
@@ -2410,6 +2536,7 @@ export function UsersTab() {
   );
   const rows = data?.users || data?.data || [];
   const [msg, setMsg] = useState("");
+  const [editing, setEditing] = useState(null); // {} = new user, user object = edit
 
   const toggleBlock = async (u) => {
     try {
@@ -2423,6 +2550,11 @@ export function UsersTab() {
   if (loading) return <p className="text-sm text-ink-3">Loading users…</p>;
   return (
     <div className="space-y-3">
+      <div className="flex justify-end">
+        <Btn onClick={() => setEditing({})}>
+          <Plus size={13} className="mr-1 inline" /> New user
+        </Btn>
+      </div>
       <Msg error={error || msg} />
       <Table head={["Name", "Phone", "Email", "Role", "Type", ""]}>
         {rows.map((u) => (
@@ -2433,25 +2565,143 @@ export function UsersTab() {
             <td className="px-4 py-3">{u.role}</td>
             <td className="px-4 py-3">{u.accountType}</td>
             <td className="px-4 py-3">
-              <button
-                onClick={() => toggleBlock(u)}
-                className={`rounded px-2.5 py-1 text-xs font-bold ${
-                  u.isBlocked
-                    ? "bg-leaf-lt text-leaf"
-                    : "bg-flame-lt text-flame"
-                }`}
-              >
-                {u.isBlocked ? "Unblock" : "Block"}
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => toggleBlock(u)}
+                  className={`rounded px-2.5 py-1 text-xs font-bold ${
+                    u.isBlocked
+                      ? "bg-leaf-lt text-leaf"
+                      : "bg-flame-lt text-flame"
+                  }`}
+                >
+                  {u.isBlocked ? "Unblock" : "Block"}
+                </button>
+                <button
+                  className={iconBtn}
+                  onClick={() => setEditing(u)}
+                  aria-label="Edit user"
+                >
+                  <PencilSimple size={14} />
+                </button>
+              </div>
             </td>
           </tr>
         ))}
+        {rows.length === 0 && (
+          <tr>
+            <td colSpan={6} className="px-4 py-8 text-center text-ink-3">
+              No users
+            </td>
+          </tr>
+        )}
       </Table>
+
+      {editing && (
+        <UserModal
+          user={editing._id ? editing : null}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            reload();
+          }}
+        />
+      )}
     </div>
   );
 }
 
+function UserModal({ user, onClose, onSaved }) {
+  const [f, setF] = useState(() => ({
+    name: user?.name || "",
+    phone: user?.phone || "",
+    email: user?.email || "",
+    role: user?.role && USER_ROLE_OPTIONS.some((o) => o.value === user.role)
+      ? user.role
+      : "user",
+    isBlocked: user?.isBlocked || false,
+  }));
+  const [err, setErr] = useState("");
+  const [saving, setSaving] = useState(false);
+  const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
+
+  const save = async () => {
+    setErr("");
+    if (!f.name.trim() || !f.phone.trim() || !f.email.trim()) {
+      setErr("Name, phone and email are required");
+      return;
+    }
+    setSaving(true);
+    try {
+      if (user) {
+        await userApi.updateUser(user._id, {
+          name: f.name.trim(),
+          phone: f.phone.trim(),
+          email: f.email.trim(),
+          role: f.role,
+          isBlocked: f.isBlocked,
+        });
+      } else {
+        await userApi.createUser({
+          name: f.name.trim(),
+          phone: f.phone.trim(),
+          email: f.email.trim(),
+          role: f.role,
+        });
+      }
+      onSaved();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title={user ? "Edit user" : "New user"} onClose={onClose}>
+      <div className="space-y-3">
+        <Field label="Name" value={f.name} onChange={set("name")} />
+        <Field label="Phone" value={f.phone} onChange={set("phone")} />
+        <Field
+          label="Email"
+          type="email"
+          value={f.email}
+          onChange={set("email")}
+        />
+        <Field
+          label="Role"
+          value={f.role}
+          onChange={set("role")}
+          options={USER_ROLE_OPTIONS}
+        />
+        {user && (
+          <label className="flex items-center gap-2 text-sm font-semibold text-ink-2">
+            <input
+              type="checkbox"
+              checked={f.isBlocked}
+              onChange={(e) => set("isBlocked")(e.target.checked)}
+              className="h-4 w-4 accent-flame"
+            />
+            Blocked
+          </label>
+        )}
+        <Msg error={err} />
+        <Btn onClick={save} disabled={saving}>
+          {saving ? "Saving…" : user ? "Save changes" : "Create user"}
+        </Btn>
+      </div>
+    </Modal>
+  );
+}
+
 /* ══════════ MANUAL ORDER ══════════ */
+
+// backend accepts only these — see createManualOrderService's
+// allowedPaymentMethods check
+const MANUAL_PAYMENT_METHODS = [
+  { value: "CASH", label: "Cash" },
+  { value: "UPI", label: "UPI" },
+  { value: "CARD", label: "Card" },
+];
 
 export function ManualOrder() {
   const users = useAsync(() => userApi.listUsers({ limit: 500 }), []);
@@ -2460,27 +2710,35 @@ export function ManualOrder() {
     []
   );
   const [userId, setUserId] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("CASH");
   const [lines, setLines] = useState([{ product: "", qty: 1 }]);
   const [note, setNote] = useState("");
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const userRows = users.data?.users || users.data?.data || [];
+  // manual orders can only be raised for real customer accounts —
+  // the service rejects staff/admin userIds with a 400
+  const userRows = (users.data?.users || users.data?.data || []).filter(
+    (u) => u.role === "user"
+  );
   const productRows = products.data?.products || [];
 
   const submit = async () => {
     setErr("");
     setOk("");
     if (!userId) return setErr("Choose a customer");
+    if (!paymentMethod) return setErr("Choose a payment method");
+    const items = lines
+      .filter((l) => l.product && l.qty)
+      .map((l) => ({ product: l.product, qty: Number(l.qty) }));
+    if (items.length === 0) return setErr("Add at least one product line");
     setSaving(true);
     try {
       await orderApi.createManualOrder({
         userId,
-        user: userId,
-        items: lines
-          .filter((l) => l.product && l.qty)
-          .map((l) => ({ product: l.product, productId: l.product, qty: Number(l.qty) })),
+        paymentMethod,
+        items,
         notes: note,
       });
       setOk("Manual order created");
@@ -2496,6 +2754,7 @@ export function ManualOrder() {
     <div className="max-w-xl space-y-4">
       <Field
         label="Customer"
+        required
         value={userId}
         onChange={setUserId}
         options={userRows.map((u) => ({
@@ -2503,12 +2762,19 @@ export function ManualOrder() {
           label: `${u.name} · ${u.phone}`,
         }))}
       />
+      <Field
+        label="Payment method"
+        required
+        value={paymentMethod}
+        onChange={setPaymentMethod}
+        options={MANUAL_PAYMENT_METHODS}
+      />
       <div className="space-y-2">
         <p className="text-xs font-bold uppercase tracking-wide text-ink-4">
           Items
         </p>
         {lines.map((l, i) => (
-          <div key={i} className="flex gap-2">
+          <div key={i} className="flex flex-wrap gap-2">
             <select
               value={l.product}
               onChange={(e) => {
@@ -2516,7 +2782,7 @@ export function ManualOrder() {
                 next[i].product = e.target.value;
                 setLines(next);
               }}
-              className="h-10 flex-1 rounded-md border border-line px-2 text-sm"
+              className="h-10 min-w-0 flex-1 rounded-md border border-line px-2 text-sm"
             >
               <option value="">Select product…</option>
               {productRows.map((p) => (
@@ -2857,6 +3123,18 @@ export function Quotations() {
   );
 }
 
+// Cloudinary serves files inline by default, so a plain <a download> is
+// ignored for these cross-origin URLs — the browser just opens the file
+// instead of saving it. Inserting fl_attachment makes Cloudinary itself
+// send Content-Disposition: attachment, which actually forces the save.
+function withAttachmentFlag(url) {
+  if (!url) return url;
+  const marker = "/upload/";
+  const i = url.indexOf(marker);
+  if (i === -1 || url.includes("fl_attachment")) return url;
+  return `${url.slice(0, i + marker.length)}fl_attachment/${url.slice(i + marker.length)}`;
+}
+
 function QuotationModal({ quotation, onClose, onSaved }) {
   const [f, setF] = useState({
     status: quotation.status,
@@ -2942,15 +3220,27 @@ function QuotationModal({ quotation, onClose, onSaved }) {
             </p>
             <div className="flex flex-wrap gap-2">
               {quotation.files.map((file) => (
-                <a
+                <span
                   key={file._id}
-                  href={file.fileUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded border border-line px-2 py-1 text-xs font-semibold text-flame hover:underline"
+                  className="flex items-center gap-1 rounded border border-line pl-2 pr-1 py-1"
                 >
-                  {file.fileName || "file"}
-                </a>
+                  <a
+                    href={file.fileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-semibold text-flame hover:underline"
+                  >
+                    {file.fileName || "file"}
+                  </a>
+                  <a
+                    href={withAttachmentFlag(file.fileUrl)}
+                    download={file.fileName || true}
+                    aria-label={`Download ${file.fileName || "file"}`}
+                    className="grid h-6 w-6 place-items-center rounded text-ink-3 hover:bg-canvas hover:text-ink"
+                  >
+                    <DownloadSimple size={13} />
+                  </a>
+                </span>
               ))}
             </div>
           </div>
@@ -2960,14 +3250,31 @@ function QuotationModal({ quotation, onClose, onSaved }) {
           <p className="mb-1 text-xs font-bold uppercase tracking-wide text-ink-4">
             Line items
           </p>
+          {lines.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 px-0.5 pb-1">
+              <span className="min-w-[110px] flex-1 text-[10px] font-bold uppercase tracking-wide text-ink-4">
+                Item
+              </span>
+              <span className="w-28 text-[10px] font-bold uppercase tracking-wide text-ink-4">
+                Unit price
+              </span>
+              <span className="w-24 text-[10px] font-bold uppercase tracking-wide text-ink-4">
+                Tax
+              </span>
+            </div>
+          )}
           <div className="space-y-2">
             {lines.map((l, i) => (
               <div key={l.id} className="flex flex-wrap items-center gap-2">
                 <span className="min-w-[110px] flex-1 text-xs">
-                  {l.label} · ×{l.qty}
+                  {l.label}
+                  {/* a custom item with no catalogue product carries a
+                      placeholder qty, not a real one — don't show it */}
+                  {l.label !== "Custom item" && ` · ×${l.qty}`}
                 </span>
                 <input
                   type="number"
+                  aria-label="Unit price"
                   placeholder="Unit price"
                   value={l.unitPrice}
                   onChange={(e) => setLine(i, "unitPrice", e.target.value)}
@@ -2975,6 +3282,7 @@ function QuotationModal({ quotation, onClose, onSaved }) {
                 />
                 <input
                   type="number"
+                  aria-label="Tax"
                   placeholder="Tax"
                   value={l.tax}
                   onChange={(e) => setLine(i, "tax", e.target.value)}

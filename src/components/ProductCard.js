@@ -3,7 +3,7 @@
 import { useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Lightning } from "@phosphor-icons/react";
+import { Lightning, Eye } from "@phosphor-icons/react";
 import ProductImage from "@/components/ProductImage";
 import { useCartStore } from "@/store/cartStore";
 import { useAuthStore, useUser } from "@/store/authStore";
@@ -108,13 +108,23 @@ export default function ProductCard({ product: p, className = "" }) {
           </span>
         )}
 
-        <button
-          onClick={quickAdd}
-          aria-label={`Add ${p.name} to cart`}
-          className="absolute bottom-2 right-2 translate-y-2 rounded-md bg-gold px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-wide text-ink opacity-0 shadow-md transition-all duration-300 hover:bg-gold-dk group-hover:translate-y-0 group-hover:opacity-100"
+        <span
+          className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-1.5 transition-all duration-300 sm:translate-y-2 sm:opacity-0 sm:group-hover:translate-y-0 sm:group-hover:opacity-100"
         >
-          + Add
-        </button>
+          <span
+            className="flex items-center gap-1 rounded-md bg-shell/95 px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-wide text-ink shadow-md"
+          >
+            <Eye size={12} weight="bold" />
+            View
+          </span>
+          <button
+            onClick={quickAdd}
+            aria-label={`Add ${p.name} to cart`}
+            className="rounded-md bg-gold px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-wide text-ink shadow-md transition-colors hover:bg-gold-dk"
+          >
+            + Add
+          </button>
+        </span>
       </div>
 
       <h3 className="line-clamp-1 text-sm font-bold text-ink transition-colors group-hover:text-flame">

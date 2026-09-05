@@ -93,6 +93,9 @@ export default function ProductDetail({ product: p }) {
       origin: thenCheckout
         ? null
         : art.current?.getBoundingClientRect(),
+      // buy-now heads straight to checkout — no need to flash the cart
+      // drawer open behind it
+      openCart: !thenCheckout,
     });
     return true;
   };

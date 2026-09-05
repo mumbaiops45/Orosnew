@@ -11,6 +11,23 @@ import { getAddress } from "@/api/address.api";
 import { useAuthStore } from "@/store/authStore";
 import QuotationThread from "@/components/QuotationThread";
 
+// wraps a required input/select and drops a red asterisk in the corner —
+// these fields have no visible label, only a placeholder, so this is the
+// only way to flag "required" without redesigning the whole form
+function RequiredField({ children, className = "" }) {
+  return (
+    <div className={`relative ${className}`}>
+      {children}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-flame"
+      >
+        *
+      </span>
+    </div>
+  );
+}
+
 export default function BulkDesk() {
   const params = useSearchParams();
   const pathname = usePathname();
@@ -38,6 +55,7 @@ export default function BulkDesk() {
     requirements: "",
     deadline: "",
     preferredProductId: "",
+    preferredQty: 1,
     variantDetails: "",
     addressLine1: "",
     addressLine2: "",
@@ -191,9 +209,17 @@ export default function BulkDesk() {
       } else if (isCustom && preferred) {
         fd.append(
           "items",
-          JSON.stringify([{ productId: preferred.id, qty: 1 }])
+          JSON.stringify([
+            {
+              productId: preferred.id,
+              qty: Math.max(1, Number(form.preferredQty) || 1),
+            },
+          ])
         );
       }
+      // no preferred product picked — that's fine, the desk prices a
+      // free-text custom request by hand; the backend defaults its
+      // placeholder item to qty 1
       for (const f of files) fd.append("files", f);
 
       const res = await createQuotation(fd);
@@ -321,7 +347,7 @@ export default function BulkDesk() {
             <div className="space-y-4">
               <label className="block">
                 <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-ink-4">
-                  Product
+                  Product<span className="text-flame"> *</span>
                 </span>
                 <select
                   value={productId}
@@ -339,7 +365,7 @@ export default function BulkDesk() {
 
               <label className="block">
                 <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-ink-4">
-                  Quantity
+                  Quantity<span className="text-flame"> *</span>
                 </span>
                 <input
                   type="number"
@@ -412,34 +438,40 @@ export default function BulkDesk() {
             )}
 
             <form onSubmit={submit} className="mt-6 grid gap-3 sm:grid-cols-2">
-              <input
-                required
-                placeholder="Contact name"
-                value={form.name}
-                onChange={set("name")}
-                className="h-12 rounded-xl border border-line px-4 text-sm outline-none focus:border-flame"
-              />
-              <input
-                required
-                placeholder="Phone"
-                inputMode="numeric"
-                value={form.phone}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    phone: e.target.value.replace(/\D/g, "").slice(0, 10),
-                  }))
-                }
-                className="h-12 rounded-xl border border-line px-4 text-sm outline-none focus:border-flame"
-              />
-              <input
-                required
-                type="email"
-                placeholder="Work email"
-                value={form.email}
-                onChange={set("email")}
-                className="h-12 rounded-xl border border-line px-4 text-sm outline-none focus:border-flame"
-              />
+              <RequiredField>
+                <input
+                  required
+                  placeholder="Contact name"
+                  value={form.name}
+                  onChange={set("name")}
+                  className="h-12 w-full rounded-xl border border-line px-4 pr-7 text-sm outline-none focus:border-flame"
+                />
+              </RequiredField>
+              <RequiredField>
+                <input
+                  required
+                  placeholder="Phone"
+                  inputMode="numeric"
+                  value={form.phone}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      phone: e.target.value.replace(/\D/g, "").slice(0, 10),
+                    }))
+                  }
+                  className="h-12 w-full rounded-xl border border-line px-4 pr-7 text-sm outline-none focus:border-flame"
+                />
+              </RequiredField>
+              <RequiredField>
+                <input
+                  required
+                  type="email"
+                  placeholder="Work email"
+                  value={form.email}
+                  onChange={set("email")}
+                  className="h-12 w-full rounded-xl border border-line px-4 pr-7 text-sm outline-none focus:border-flame"
+                />
+              </RequiredField>
               <input
                 placeholder="Company (optional)"
                 value={form.company}
@@ -464,18 +496,35 @@ export default function BulkDesk() {
                 />
               </label>
 
-              <textarea
-                required={isCustom}
-                placeholder={
-                  isCustom
-                    ? "What do you need? Sizes, materials, finish, quantity, deadline…"
-                    : "Anything else the desk should know (optional)"
-                }
-                value={form.requirements}
-                onChange={set("requirements")}
-                rows={3}
-                className="rounded-xl border border-line px-4 py-3 text-sm outline-none focus:border-flame sm:col-span-2"
-              />
+              <label className="block sm:col-span-2">
+                <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-ink-4">
+                  Requirements
+                  {isCustom ? (
+                    <>
+                      <span className="text-flame"> *</span>
+                      <span className="normal-case font-normal tracking-normal text-ink-3">
+                        {" "}
+                        (want your own 3D model printed? mention the quantity
+                        here too)
+                      </span>
+                    </>
+                  ) : (
+                    " (optional)"
+                  )}
+                </span>
+                <textarea
+                  required={isCustom}
+                  placeholder={
+                    isCustom
+                      ? "What do you need? Sizes, materials, finish, quantity, deadline…"
+                      : "Anything else the desk should know (optional)"
+                  }
+                  value={form.requirements}
+                  onChange={set("requirements")}
+                  rows={3}
+                  className="w-full rounded-xl border border-line px-4 py-3 text-sm outline-none focus:border-flame"
+                />
+              </label>
 
               {isCustom && (
                 <>
@@ -497,11 +546,33 @@ export default function BulkDesk() {
                       ))}
                     </select>
                   </label>
+
+                  {/* only matters once a closest-match product is picked —
+                      that's what makes this "the same, but N units of a
+                      variant we don't list" rather than a free-text ask */}
+                  {form.preferredProductId && (
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-ink-4">
+                        Quantity needed<span className="text-flame"> *</span>
+                      </span>
+                      <input
+                        required
+                        type="number"
+                        min={1}
+                        value={form.preferredQty}
+                        onChange={set("preferredQty")}
+                        className="h-12 w-full rounded-xl border border-line px-4 text-sm outline-none focus:border-flame"
+                      />
+                    </label>
+                  )}
+
                   <input
                     placeholder="Which colour / size / material do you need that we don't list?"
                     value={form.variantDetails}
                     onChange={set("variantDetails")}
-                    className="h-12 rounded-xl border border-line px-4 text-sm outline-none focus:border-flame sm:col-span-2"
+                    className={`h-12 rounded-xl border border-line px-4 text-sm outline-none focus:border-flame ${
+                      form.preferredProductId ? "" : "sm:col-span-2"
+                    }`}
                   />
                 </>
               )}
@@ -522,53 +593,63 @@ export default function BulkDesk() {
                   </button>
                 )}
               </div>
-              <input
-                required
-                placeholder="Address line 1"
-                value={form.addressLine1}
-                onChange={set("addressLine1")}
-                className="h-12 rounded-xl border border-line px-4 text-sm outline-none focus:border-flame sm:col-span-2"
-              />
+              <RequiredField className="sm:col-span-2">
+                <input
+                  required
+                  placeholder="Address line 1"
+                  value={form.addressLine1}
+                  onChange={set("addressLine1")}
+                  className="h-12 w-full rounded-xl border border-line px-4 pr-7 text-sm outline-none focus:border-flame"
+                />
+              </RequiredField>
               <input
                 placeholder="Address line 2 (optional)"
                 value={form.addressLine2}
                 onChange={set("addressLine2")}
                 className="h-12 rounded-xl border border-line px-4 text-sm outline-none focus:border-flame sm:col-span-2"
               />
-              <input
-                required
-                placeholder="City"
-                value={form.city}
-                onChange={set("city")}
-                className="h-12 rounded-xl border border-line px-4 text-sm outline-none focus:border-flame"
-              />
-              <input
-                required
-                placeholder="State"
-                value={form.state}
-                onChange={set("state")}
-                className="h-12 rounded-xl border border-line px-4 text-sm outline-none focus:border-flame"
-              />
-              <input
-                required
-                placeholder="Country"
-                value={form.country}
-                onChange={set("country")}
-                className="h-12 rounded-xl border border-line px-4 text-sm outline-none focus:border-flame"
-              />
-              <input
-                required
-                placeholder="Pincode"
-                inputMode="numeric"
-                value={form.pincode}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    pincode: e.target.value.replace(/\D/g, "").slice(0, 6),
-                  }))
-                }
-                className="h-12 rounded-xl border border-line px-4 text-sm outline-none focus:border-flame"
-              />
+              <RequiredField>
+                <input
+                  required
+                  placeholder="City"
+                  value={form.city}
+                  onChange={set("city")}
+                  className="h-12 w-full rounded-xl border border-line px-4 pr-7 text-sm outline-none focus:border-flame"
+                />
+              </RequiredField>
+              <RequiredField>
+                <input
+                  required
+                  placeholder="State"
+                  value={form.state}
+                  onChange={set("state")}
+                  className="h-12 w-full rounded-xl border border-line px-4 pr-7 text-sm outline-none focus:border-flame"
+                />
+              </RequiredField>
+              <RequiredField>
+                <input
+                  required
+                  placeholder="Country"
+                  value={form.country}
+                  onChange={set("country")}
+                  className="h-12 w-full rounded-xl border border-line px-4 pr-7 text-sm outline-none focus:border-flame"
+                />
+              </RequiredField>
+              <RequiredField>
+                <input
+                  required
+                  placeholder="Pincode"
+                  inputMode="numeric"
+                  value={form.pincode}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      pincode: e.target.value.replace(/\D/g, "").slice(0, 6),
+                    }))
+                  }
+                  className="h-12 w-full rounded-xl border border-line px-4 pr-7 text-sm outline-none focus:border-flame"
+                />
+              </RequiredField>
 
               <label className="rounded-xl border border-dashed border-line px-4 py-3 text-sm text-ink-3 sm:col-span-2">
                 <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-ink-4">

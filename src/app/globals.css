@@ -131,6 +131,18 @@ html.lenis body {
   color: #fff;
 }
 
+/* Native <button> defaults to cursor:default — every clickable control
+   in the app should read as clickable. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+input[type="button"]:not(:disabled),
+input[type="submit"]:not(:disabled),
+select:not(:disabled),
+label:has(> input[type="checkbox"]),
+label:has(> input[type="radio"]) {
+  cursor: pointer;
+}
+
 /* Horizontal rails scroll by drag/arrow — hide the bar, keep the overflow */
 .no-scrollbar {
   scrollbar-width: none;

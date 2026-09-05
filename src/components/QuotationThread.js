@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   PaperPlaneRight,
   Paperclip,
+  DownloadSimple,
   ShieldCheck,
   ArrowRight,
 } from "@phosphor-icons/react";
@@ -38,6 +39,18 @@ const STATUS_NOTE = {
 };
 
 const CANCELLABLE = ["PENDING", "IN_REVIEW", "QUOTED"];
+
+// Cloudinary serves files inline by default, so a plain <a download> is
+// ignored for these cross-origin URLs — the browser just opens the file
+// instead of saving it. Inserting fl_attachment makes Cloudinary itself
+// send Content-Disposition: attachment, which actually forces the save.
+function withAttachmentFlag(url) {
+  if (!url) return url;
+  const marker = "/upload/";
+  const i = url.indexOf(marker);
+  if (i === -1 || url.includes("fl_attachment")) return url;
+  return `${url.slice(0, i + marker.length)}fl_attachment/${url.slice(i + marker.length)}`;
+}
 
 /**
  * One quotation, end to end: the desk's pricing, the running conversation,
@@ -185,7 +198,10 @@ export default function QuotationThread({
                 className="flex items-center justify-between gap-3 text-sm"
               >
                 <span className="text-ink-2">
-                  {itemName(it)} × {it.qty}
+                  {itemName(it)}
+                  {/* a custom item with no catalogue product carries a
+                      placeholder qty, not a real one — don't show it */}
+                  {it.product ? ` × ${it.qty}` : ""}
                 </span>
                 {lineAmount > 0 && (
                   <span className="font-semibold text-ink">
@@ -207,16 +223,28 @@ export default function QuotationThread({
       {(q.files || []).length > 0 && (
         <div className="flex flex-wrap gap-2">
           {q.files.map((f) => (
-            <a
+            <span
               key={f._id}
-              href={f.fileUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-xs font-semibold text-flame hover:underline"
+              className="inline-flex items-center gap-1 rounded-lg border border-line py-1 pl-2.5 pr-1"
             >
-              <Paperclip size={12} />
-              {f.fileName || "file"}
-            </a>
+              <a
+                href={f.fileUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-flame hover:underline"
+              >
+                <Paperclip size={12} />
+                {f.fileName || "file"}
+              </a>
+              <a
+                href={withAttachmentFlag(f.fileUrl)}
+                download={f.fileName || true}
+                aria-label={`Download ${f.fileName || "file"}`}
+                className="grid h-6 w-6 place-items-center rounded text-ink-3 hover:bg-canvas hover:text-ink"
+              >
+                <DownloadSimple size={12} />
+              </a>
+            </span>
           ))}
         </div>
       )}

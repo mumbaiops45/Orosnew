@@ -110,7 +110,7 @@ export default async function Home() {
 
       {bestOf.length > 0 && (
         <Rail
-          title="Best of desk"
+          title="Explore our catalogue"
           subtitle="Everything we print, in one place"
           products={bestOf}
           href="/shop"

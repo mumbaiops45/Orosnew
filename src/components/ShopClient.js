@@ -306,6 +306,7 @@ export default function ShopClient() {
                 o === "subcategory" ? null : "subcategory"
               )
             }
+            align="right"
           >
             <Option
               label={`All ${activeCategory.name}`}
@@ -426,7 +427,7 @@ function Pill({ active, onClick, children, small = false }) {
   );
 }
 
-function FilterButton({ label, count, open, onToggle, wide, children }) {
+function FilterButton({ label, count, open, onToggle, wide, align = "left", children }) {
   return (
     <div className="relative">
       <button
@@ -455,9 +456,9 @@ function FilterButton({ label, count, open, onToggle, wide, children }) {
 
       {open && (
         <div
-          className={`absolute left-0 top-full z-40 mt-2 rounded-xl border border-line bg-shell p-2 shadow-[0_18px_40px_-16px_rgba(43,27,77,0.4)] ${
-            wide ? "w-[19rem]" : "w-56"
-          }`}
+          className={`absolute top-full z-40 mt-2 max-w-[calc(100vw-2rem)] rounded-xl border border-line bg-shell p-2 shadow-[0_18px_40px_-16px_rgba(43,27,77,0.4)] ${
+            align === "right" ? "right-0" : "left-0"
+          } ${wide ? "w-[19rem]" : "w-56"}`}
         >
           {children}
         </div>

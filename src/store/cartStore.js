@@ -80,7 +80,10 @@ export const useCartStore = create(
       flight: null,
       hydrated: false,
 
-      add: (product, { options = [], qty = 1, origin = null } = {}) => {
+      add: (
+        product,
+        { options = [], qty = 1, origin = null, openCart = true } = {}
+      ) => {
         if (!product?.id && !product?._id) return;
 
         // the store is customer-only — no token, no cart
@@ -177,7 +180,7 @@ export const useCartStore = create(
               image: product.image,
             },
           });
-        } else {
+        } else if (openCart) {
           set({ drawerOpen: true });
         }
       },
