@@ -12,6 +12,7 @@ import * as couponApi from "@/api/coupon.api";
 import * as userApi from "@/api/user.api";
 import * as bannerApi from "@/api/banner.api";
 import * as quotationApi from "@/api/quotation.api";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 /* ══════════ shared primitives ══════════ */
 
@@ -537,8 +538,13 @@ const ORDER_TABS = [
   { id: "manual", label: "Manual", test: (o) => o.source === "MANUAL" },
 ];
 
-function useOrders() {
-  return useAsync(() => orderApi.getAdminOrders(), []);
+const ORDERS_PAGE_LIMIT = 20;
+
+function useOrders(page) {
+  return useAsync(
+    () => orderApi.getAdminOrders({ page, limit: ORDERS_PAGE_LIMIT }),
+    [page]
+  );
 }
 
 const SOURCE_TONE = {
@@ -563,6 +569,11 @@ function SourceBadge({ order }) {
       {source === "QUOTATION" && order.quotation?.type && (
         <span className="rounded bg-canvas px-2 py-1 text-[11px] font-bold text-ink-2">
           {order.quotation.type}
+        </span>
+      )}
+      {source === "QUOTATION" && order.quotation?.refNumber && (
+        <span className="rounded bg-canvas px-2 py-1 text-[11px] font-bold text-ink-2">
+          {order.quotation.refNumber}
         </span>
       )}
     </span>
@@ -631,10 +642,11 @@ function OrderStatusControl({ order, onChanged }) {
   );
 }
 
-function OrderList({ filterId }) {
-  const { data, loading, error, reload } = useOrders();
+function OrderList({ filterId, page, setPage }) {
+  const { data, loading, error, reload } = useOrders(page);
   const [open, setOpen] = useState(null);
-  const orders = Array.isArray(data) ? data : data?.data || [];
+  const orders = data?.orders || [];
+  const pagination = data?.pagination;
   const f = ORDER_TABS.find((t) => t.id === filterId) || ORDER_TABS[0];
   const rows = orders.filter(f.test);
 
@@ -748,19 +760,29 @@ function OrderList({ filterId }) {
           </tr>
         )}
       </Table>
+      <Pager
+        page={page}
+        setPage={setPage}
+        totalPages={pagination?.totalPages}
+        hasNext={pagination?.hasNextPage}
+      />
     </>
   );
 }
 
 export function Orders() {
   const [t, setT] = useState("all");
+  const [page, setPage] = useState(1);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
         {ORDER_TABS.map((x) => (
           <button
             key={x.id}
-            onClick={() => setT(x.id)}
+            onClick={() => {
+              setT(x.id);
+              setPage(1);
+            }}
             className={`rounded-full px-4 py-2 text-xs font-bold transition-colors ${
               t === x.id ? "bg-ink text-white" : "bg-shell text-ink-2 border border-line"
             }`}
@@ -769,7 +791,7 @@ export function Orders() {
           </button>
         ))}
       </div>
-      <OrderList filterId={t} />
+      <OrderList filterId={t} page={page} setPage={setPage} />
     </div>
   );
 }
@@ -784,7 +806,7 @@ const PAYMENT_TABS = [
 export function Payments() {
   const { data, loading, error } = useOrders();
   const [tab, setTab] = useState("paid");
-  const orders = Array.isArray(data) ? data : data?.data || [];
+  const orders = data?.orders || [];
   const paid = orders.filter(PAYMENT_TABS[0].test);
   const unpaid = orders.filter(PAYMENT_TABS[1].test);
   const rows = tab === "paid" ? paid : unpaid;
@@ -915,13 +937,14 @@ export function Products() {
   );
   const [editing, setEditing] = useState(null); // product object or {} for new
   const [msg, setMsg] = useState("");
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const products = data?.products || [];
   const categories = cats.data?.category || [];
   const subcategories = subs.data?.subCategory || [];
 
   const remove = async (id) => {
-    if (!confirm("Delete this product?")) return;
+    if (!(await confirm("Delete this product?"))) return;
     try {
       await productApi.deleteProduct(id);
       reload();
@@ -1007,6 +1030,7 @@ export function Products() {
           }}
         />
       )}
+      {ConfirmDialog}
     </div>
   );
 }
@@ -1108,6 +1132,7 @@ function ProductModal({ product, categories, subcategories, onClose, onSaved }) 
     { id: "specs", label: "Specs" },
     { id: "options", label: "Options & values" },
     { id: "slabs", label: "Price slabs" },
+    { id: "shipping", label: "Shipping" },
   ];
 
   const set = (k) => (v) => setF((s) => ({ ...s, [k]: v }));
@@ -1178,6 +1203,7 @@ function ProductModal({ product, categories, subcategories, onClose, onSaved }) 
           {tab === "specs" && <SpecEditor productId={savedId} />}
           {tab === "options" && <OptionEditor productId={savedId} />}
           {tab === "slabs" && <PriceSlabEditor productId={savedId} />}
+          {tab === "shipping" && <ShippingEditor productId={savedId} />}
           <div className="border-t border-line pt-3">
             <button
               onClick={onSaved}
@@ -1730,6 +1756,182 @@ function PriceSlabEditor({ productId }) {
   );
 }
 
+// Packing (weight/dimensions) — checkout can't quote shipping for a
+// product until this exists, so a product missing it blocks checkout
+// with "Shipping details are missing for <name>".
+function ShippingEditor({ productId }) {
+  const [shipping, setShipping] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [f, setF] = useState({ weight: "", length: "", width: "", height: "" });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+
+  const load = useCallback(() => {
+    setLoading(true);
+    setLoadErr("");
+    productApi
+      .getProductShipping(productId)
+      .then((d) => setShipping(d?.shipping || null))
+      .catch((e) => {
+        if (e.status === 404) setShipping(null);
+        else setLoadErr(e.message);
+      })
+      .finally(() => setLoading(false));
+  }, [productId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const startEdit = () => {
+    setF({
+      weight: shipping?.weight ?? "",
+      length: shipping?.length ?? "",
+      width: shipping?.width ?? "",
+      height: shipping?.height ?? "",
+    });
+    setErr("");
+    setOk("");
+    setEditing(true);
+  };
+
+  const save = async () => {
+    setErr("");
+    setOk("");
+    if (!f.weight || !f.length || !f.width || !f.height) {
+      setErr("Weight, length, width and height are all required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const body = {
+        weight: Number(f.weight),
+        length: Number(f.length),
+        width: Number(f.width),
+        height: Number(f.height),
+      };
+      if (shipping) {
+        await productApi.updateProductShipping(shipping._id, body);
+      } else {
+        await productApi.createProductShipping(productId, body);
+      }
+      setEditing(false);
+      setOk("Saved");
+      load();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!shipping) return;
+    setErr("");
+    setSaving(true);
+    try {
+      await productApi.deleteProductShipping(shipping._id);
+      load();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Section title="Shipping (weight & dimensions)">
+      <Msg error={loadErr} />
+      {loading ? (
+        <p className="text-sm text-ink-3">Loading…</p>
+      ) : !editing ? (
+        shipping ? (
+          <div className="flex items-center justify-between gap-3 rounded-md bg-canvas/40 px-3 py-2">
+            <span className="text-sm font-semibold text-ink-2">
+              {shipping.weight} kg · {shipping.length}×{shipping.width}×
+              {shipping.height} cm
+            </span>
+            <div className="flex shrink-0 gap-1.5">
+              <button onClick={startEdit} className={editIconBtn} aria-label="Edit">
+                <PencilSimple size={13} />
+              </button>
+              <button onClick={remove} className={editIconBtn} aria-label="Delete">
+                <Trash size={13} />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-flame">
+              No shipping details yet — checkout will fail for this product
+              until they're added.
+            </p>
+            <button
+              onClick={startEdit}
+              className="rounded-md bg-ink px-3 py-1.5 text-xs font-bold text-white hover:bg-ink-2"
+            >
+              Add shipping details
+            </button>
+          </div>
+        )
+      ) : (
+        <div className="space-y-2 rounded-md border border-line p-3">
+          <div className="flex flex-wrap items-end gap-2">
+            <Labeled label="Weight (kg)" className="w-24">
+              <input
+                type="number"
+                step="0.01"
+                value={f.weight}
+                onChange={(e) => setF((s) => ({ ...s, weight: e.target.value }))}
+                className={inlineInput}
+              />
+            </Labeled>
+            <Labeled label="Length (cm)" className="w-24">
+              <input
+                type="number"
+                step="0.1"
+                value={f.length}
+                onChange={(e) => setF((s) => ({ ...s, length: e.target.value }))}
+                className={inlineInput}
+              />
+            </Labeled>
+            <Labeled label="Width (cm)" className="w-24">
+              <input
+                type="number"
+                step="0.1"
+                value={f.width}
+                onChange={(e) => setF((s) => ({ ...s, width: e.target.value }))}
+                className={inlineInput}
+              />
+            </Labeled>
+            <Labeled label="Height (cm)" className="w-24">
+              <input
+                type="number"
+                step="0.1"
+                value={f.height}
+                onChange={(e) => setF((s) => ({ ...s, height: e.target.value }))}
+                className={inlineInput}
+              />
+            </Labeled>
+          </div>
+          <SaveCancel
+            onSave={save}
+            onCancel={() => setEditing(false)}
+            busy={saving}
+            err={err}
+          />
+        </div>
+      )}
+      {ok && !editing && (
+        <p className="text-xs font-semibold text-leaf">{ok}</p>
+      )}
+    </Section>
+  );
+}
+
 function OptionEditor({ productId }) {
   const { data, reload } = useAsync(
     () => productApi.getProductOptions(productId),
@@ -2162,6 +2364,7 @@ function TaxonomyTab({ kind }) {
   const categories = catsData.data?.category || [];
   const [editing, setEditing] = useState(null);
   const [msg, setMsg] = useState("");
+  const { confirm, ConfirmDialog } = useConfirm();
 
   // dropped the last row on a trailing page — step back
   useEffect(() => {
@@ -2169,7 +2372,7 @@ function TaxonomyTab({ kind }) {
   }, [loading, rows.length, page]);
 
   const remove = async (id) => {
-    if (!confirm("Delete?")) return;
+    if (!(await confirm("Delete?"))) return;
     try {
       isCat ? await api.deleteCategory(id) : await api.deleteSubcategory(id);
       reload();
@@ -2243,6 +2446,7 @@ function TaxonomyTab({ kind }) {
           }}
         />
       )}
+      {ConfirmDialog}
     </div>
   );
 }
@@ -2363,9 +2567,10 @@ export function Coupons() {
   const rows = data?.coupons || [];
   const [editing, setEditing] = useState(null);
   const [msg, setMsg] = useState("");
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const remove = async (id) => {
-    if (!confirm("Delete coupon?")) return;
+    if (!(await confirm("Delete coupon?"))) return;
     try {
       await couponApi.deleteCoupon(id);
       reload();
@@ -2424,6 +2629,7 @@ export function Coupons() {
           }}
         />
       )}
+      {ConfirmDialog}
     </div>
   );
 }
@@ -2610,14 +2816,16 @@ export function UsersTab() {
   );
 }
 
-function UserModal({ user, onClose, onSaved }) {
+function UserModal({ user, onClose, onSaved, lockRole }) {
   const [f, setF] = useState(() => ({
     name: user?.name || "",
     phone: user?.phone || "",
     email: user?.email || "",
-    role: user?.role && USER_ROLE_OPTIONS.some((o) => o.value === user.role)
-      ? user.role
-      : "user",
+    role:
+      lockRole ||
+      (user?.role && USER_ROLE_OPTIONS.some((o) => o.value === user.role)
+        ? user.role
+        : "user"),
     isBlocked: user?.isBlocked || false,
   }));
   const [err, setErr] = useState("");
@@ -2632,23 +2840,21 @@ function UserModal({ user, onClose, onSaved }) {
     }
     setSaving(true);
     try {
-      if (user) {
-        await userApi.updateUser(user._id, {
-          name: f.name.trim(),
-          phone: f.phone.trim(),
-          email: f.email.trim(),
-          role: f.role,
-          isBlocked: f.isBlocked,
-        });
-      } else {
-        await userApi.createUser({
-          name: f.name.trim(),
-          phone: f.phone.trim(),
-          email: f.email.trim(),
-          role: f.role,
-        });
-      }
-      onSaved();
+      const result = user
+        ? await userApi.updateUser(user._id, {
+            name: f.name.trim(),
+            phone: f.phone.trim(),
+            email: f.email.trim(),
+            role: f.role,
+            isBlocked: f.isBlocked,
+          })
+        : await userApi.createUser({
+            name: f.name.trim(),
+            phone: f.phone.trim(),
+            email: f.email.trim(),
+            role: f.role,
+          });
+      onSaved(result);
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -2667,12 +2873,14 @@ function UserModal({ user, onClose, onSaved }) {
           value={f.email}
           onChange={set("email")}
         />
-        <Field
-          label="Role"
-          value={f.role}
-          onChange={set("role")}
-          options={USER_ROLE_OPTIONS}
-        />
+        {!lockRole && (
+          <Field
+            label="Role"
+            value={f.role}
+            onChange={set("role")}
+            options={USER_ROLE_OPTIONS}
+          />
+        )}
         {user && (
           <label className="flex items-center gap-2 text-sm font-semibold text-ink-2">
             <input
@@ -2716,13 +2924,29 @@ export function ManualOrder() {
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [saving, setSaving] = useState(false);
+  const [addingUser, setAddingUser] = useState(false);
+  // GET /user is admin-only — staff hit a 403 here and can only ever see
+  // customers they create below, never the full list
+  const [createdUsers, setCreatedUsers] = useState([]);
 
   // manual orders can only be raised for real customer accounts —
   // the service rejects staff/admin userIds with a 400
-  const userRows = (users.data?.users || users.data?.data || []).filter(
-    (u) => u.role === "user"
-  );
+  const userRows = useMemo(() => {
+    const fromApi = (users.data?.users || users.data?.data || []).filter(
+      (u) => u.role === "user"
+    );
+    const extra = createdUsers.filter(
+      (u) => !fromApi.some((r) => r._id === u._id)
+    );
+    return [...extra, ...fromApi];
+  }, [users.data, createdUsers]);
   const productRows = products.data?.products || [];
+  const priceOf = (id) =>
+    Number(productRows.find((p) => p._id === id)?.basePrice) || 0;
+  const orderTotal = lines.reduce(
+    (sum, l) => sum + priceOf(l.product) * (Number(l.qty) || 0),
+    0
+  );
 
   const submit = async () => {
     setErr("");
@@ -2752,16 +2976,31 @@ export function ManualOrder() {
 
   return (
     <div className="max-w-xl space-y-4">
-      <Field
-        label="Customer"
-        required
-        value={userId}
-        onChange={setUserId}
-        options={userRows.map((u) => ({
-          value: u._id,
-          label: `${u.name} · ${u.phone}`,
-        }))}
-      />
+      <div>
+        <Field
+          label="Customer"
+          required
+          value={userId}
+          onChange={setUserId}
+          options={userRows.map((u) => ({
+            value: u._id,
+            label: `${u.name} · ${u.phone}`,
+          }))}
+        />
+        <button
+          type="button"
+          onClick={() => setAddingUser(true)}
+          className="mt-1 text-xs font-bold text-flame hover:underline"
+        >
+          + New customer
+        </button>
+        {users.error && (
+          <p className="mt-1 text-xs text-ink-3">
+            You can't browse existing customers from this account — create a
+            new one above for this order.
+          </p>
+        )}
+      </div>
       <Field
         label="Payment method"
         required
@@ -2802,6 +3041,9 @@ export function ManualOrder() {
               }}
               className="h-10 w-20 rounded-md border border-line px-2 text-sm"
             />
+            <span className="flex h-10 min-w-20 items-center justify-end px-1 text-sm font-bold text-ink">
+              {l.product ? formatINR(priceOf(l.product) * (Number(l.qty) || 0)) : "—"}
+            </span>
             <button
               onClick={() => setLines(lines.filter((_, j) => j !== i))}
               className={iconBtn}
@@ -2816,6 +3058,11 @@ export function ManualOrder() {
         >
           + Add line
         </button>
+        {lines.some((l) => l.product) && (
+          <p className="text-right text-sm font-extrabold text-ink">
+            Total: {formatINR(orderTotal)}
+          </p>
+        )}
       </div>
       <label className="block">
         <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-ink-4">
@@ -2832,6 +3079,21 @@ export function ManualOrder() {
       <Btn onClick={submit} disabled={saving}>
         {saving ? "Creating…" : "Create order"}
       </Btn>
+      {addingUser && (
+        <UserModal
+          user={null}
+          lockRole="user"
+          onClose={() => setAddingUser(false)}
+          onSaved={(res) => {
+            setAddingUser(false);
+            if (res?.user?._id) {
+              setCreatedUsers((prev) => [res.user, ...prev]);
+              setUserId(res.user._id);
+            }
+            users.reload();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -2932,10 +3194,12 @@ export function Banners() {
 function BannerModal({ row, onClose, onSaved }) {
   const [f, setF] = useState({
     type: row?.type || "SLIDER",
+    kicker: row?.kicker || "",
     title: row?.title || "",
     subTitle: row?.subTitle || "",
     ctaLabel: row?.ctaLabel || "",
     ctaUrl: row?.ctaUrl || "",
+    tone: row?.tone || "LIGHT",
     order: row?.order ?? 1,
     isActive: row?.isActive !== false,
   });
@@ -2953,10 +3217,12 @@ function BannerModal({ row, onClose, onSaved }) {
     try {
       const fd = new FormData();
       fd.append("type", f.type);
+      fd.append("kicker", f.kicker);
       fd.append("title", f.title);
       fd.append("subTitle", f.subTitle);
       fd.append("ctaLabel", f.ctaLabel);
       fd.append("ctaUrl", f.ctaUrl);
+      fd.append("tone", f.tone);
       fd.append("order", String(f.order));
       fd.append("isActive", String(f.isActive));
       if (desktop) fd.append("mediaDesktop", desktop);
@@ -2990,6 +3256,16 @@ function BannerModal({ row, onClose, onSaved }) {
           value={f.order}
           onChange={set("order")}
         />
+        <Field
+          label="Tone"
+          value={f.tone}
+          onChange={set("tone")}
+          options={[
+            { value: "LIGHT", label: "Light (dark text)" },
+            { value: "DARK", label: "Dark (white text)" },
+          ]}
+        />
+        <Field label="Kicker" value={f.kicker} onChange={set("kicker")} />
         <Field label="Title" value={f.title} onChange={set("title")} />
         <Field label="Subtitle" value={f.subTitle} onChange={set("subTitle")} />
         <Field label="CTA label" value={f.ctaLabel} onChange={set("ctaLabel")} />
@@ -3065,7 +3341,7 @@ export function Quotations() {
         <p className="text-sm text-ink-3">Loading quotations…</p>
       ) : (
         <Table
-          head={["Ref", "Customer", "Type", "Items", "Total", "Status", ""]}
+          head={["Ref", "Customer", "Type", "Items", "Files", "Total", "Status", ""]}
         >
           {rows.map((q) => (
             <tr key={q._id} className="border-b border-line last:border-0">
@@ -3081,6 +3357,39 @@ export function Quotations() {
               </td>
               <td className="px-4 py-3">{q.type || "—"}</td>
               <td className="px-4 py-3">{(q.items || []).length}</td>
+              <td className="px-4 py-3">
+                {(q.files || []).length === 0 ? (
+                  <span className="text-xs text-ink-3">—</span>
+                ) : (
+                  <div className="flex flex-wrap gap-1">
+                    {q.files.map((f) => (
+                      <span
+                        key={f._id}
+                        className="inline-flex items-center gap-0.5 rounded border border-line px-0.5 py-0.5"
+                        title={f.fileName || "file"}
+                      >
+                        <a
+                          href={f.fileUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label={`View ${f.fileName || "file"}`}
+                          className="grid h-5 w-5 place-items-center text-ink-3 hover:text-ink"
+                        >
+                          <Eye size={12} />
+                        </a>
+                        <a
+                          href={withAttachmentFlag(f.fileUrl)}
+                          download={f.fileName || true}
+                          aria-label={`Download ${f.fileName || "file"}`}
+                          className="grid h-5 w-5 place-items-center text-ink-3 hover:text-ink"
+                        >
+                          <DownloadSimple size={12} />
+                        </a>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </td>
               <td className="px-4 py-3 font-bold">{formatINR(q.total || 0)}</td>
               <td className="px-4 py-3">
                 <span className="rounded bg-canvas px-2 py-1 text-xs font-bold">
@@ -3099,7 +3408,7 @@ export function Quotations() {
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={7} className="px-4 py-8 text-center text-ink-3">
+              <td colSpan={8} className="px-4 py-8 text-center text-ink-3">
                 No quotations
               </td>
             </tr>
@@ -3168,6 +3477,20 @@ function QuotationModal({ quotation, onClose, onSaved }) {
   const save = async () => {
     setErr("");
     setOk("");
+    // a QUOTED status means the desk is handing the customer a real price
+    // — sub total, tax and shipping have to be deliberately filled in, not
+    // left at their zero default
+    if (f.status === "QUOTED") {
+      if (f.subTotal === "" || Number(f.subTotal) <= 0) {
+        return setErr("Sub total is required to quote a price");
+      }
+      if (f.tax === "" || Number.isNaN(Number(f.tax))) {
+        return setErr("Tax is required to quote a price");
+      }
+      if (f.shipping === "" || Number.isNaN(Number(f.shipping))) {
+        return setErr("Shipping is required to quote a price");
+      }
+    }
     setSaving(true);
     try {
       await quotationApi.updateQuotationByAdmin(quotation._id, {
@@ -3315,13 +3638,21 @@ function QuotationModal({ quotation, onClose, onSaved }) {
           <Field
             label="Sub total"
             type="number"
+            required={f.status === "QUOTED"}
             value={f.subTotal}
             onChange={set("subTotal")}
           />
-          <Field label="Tax" type="number" value={f.tax} onChange={set("tax")} />
+          <Field
+            label="Tax"
+            type="number"
+            required={f.status === "QUOTED"}
+            value={f.tax}
+            onChange={set("tax")}
+          />
           <Field
             label="Shipping"
             type="number"
+            required={f.status === "QUOTED"}
             value={f.shipping}
             onChange={set("shipping")}
           />

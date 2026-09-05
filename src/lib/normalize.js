@@ -175,3 +175,25 @@ export function normalizeSubcategoryList(list) {
   if (!Array.isArray(list)) return [];
   return list.map(normalizeSubcategory).filter(Boolean);
 }
+
+export function normalizeBanner(raw) {
+  if (!raw) return null;
+  return {
+    id: raw._id || raw.id,
+    type: raw.type,
+    kicker: raw.kicker || "",
+    title: raw.title || "",
+    subTitle: raw.subTitle || "",
+    imageDesktop: raw.mediaUrlDesktop || PLACEHOLDER_IMAGE,
+    imageMobile: raw.mediaUrlMobile || raw.mediaUrlDesktop || PLACEHOLDER_IMAGE,
+    ctaLabel: raw.ctaLabel || "",
+    ctaUrl: raw.ctaUrl || "",
+    tone: raw.tone === "DARK" ? "dark" : "light",
+    order: Number(raw.order) || 0,
+  };
+}
+
+export function normalizeBannerList(list) {
+  if (!Array.isArray(list)) return [];
+  return list.map(normalizeBanner).filter(Boolean);
+}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, Percent, Tag } from "@phosphor-icons/react/ssr";
 import BannerCarousel from "@/components/BannerCarousel";
+import Showreel from "@/components/Showreel";
 import Rail from "@/components/Rail";
 import ProductImage from "@/components/ProductImage";
 import { formatINR } from "@/lib/format";
@@ -9,6 +10,7 @@ import {
   fetchBestSellers,
   fetchCategories,
   fetchCoupons,
+  fetchBanners,
 } from "@/lib/catalog";
 
 export const dynamic = "force-dynamic";
@@ -19,12 +21,15 @@ function couponHeadline(c) {
 }
 
 export default async function Home() {
-  const [bestsellers, pool, categories, coupons] = await Promise.all([
-    fetchBestSellers(12),
-    fetchProducts({ limit: 40 }),
-    fetchCategories(),
-    fetchCoupons(),
-  ]);
+  const [bestsellers, pool, categories, coupons, sliderBanners, showreelBanners] =
+    await Promise.all([
+      fetchBestSellers(12),
+      fetchProducts({ limit: 40 }),
+      fetchCategories(),
+      fetchCoupons(),
+      fetchBanners("SLIDER"),
+      fetchBanners("SHOWREEL"),
+    ]);
 
   const allProducts = pool.products;
 
@@ -41,7 +46,7 @@ export default async function Home() {
 
   return (
     <div className="space-y-3 pb-3">
-      <BannerCarousel />
+      <BannerCarousel banners={sliderBanners} />
 
       {featuredBestsellers.length > 0 && (
         <Rail
@@ -135,11 +140,12 @@ export default async function Home() {
                 Bulk & wholesale
               </span>
               <h2 className="font-display text-2xl font-extrabold tracking-tight text-white lg:text-3xl">
-                Buying 25 or more? Your price drops automatically.
+                Buying in bulk? Your price drops automatically.
               </h2>
               <p className="mt-2 max-w-xl text-sm text-white/65 lg:text-base">
                 Corporate gifts, retail stock, event merch, spare parts. Tier
-                pricing is applied in the cart — no negotiation needed.
+                pricing is applied in the cart the moment your quantity
+                qualifies — no negotiation needed.
               </p>
             </div>
             <span className="relative inline-flex shrink-0 items-center gap-2 rounded-md bg-flame px-7 py-3.5 text-sm font-extrabold text-white transition-colors group-hover:bg-gold group-hover:text-ink">
@@ -152,6 +158,8 @@ export default async function Home() {
           </Link>
         </div>
       </section>
+
+      <Showreel banners={showreelBanners} />
 
       {newest.length > 0 && (
         <Rail

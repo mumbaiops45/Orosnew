@@ -6,6 +6,7 @@ import { Minus, Plus, Trash, ShoppingCart, Tag, CaretRight } from "@phosphor-ico
 import ProductImage from "@/components/ProductImage";
 import { useCart } from "@/store/cartStore";
 import { formatINR } from "@/lib/format";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 export default function CartClient() {
   const router = useRouter();
@@ -20,6 +21,7 @@ export default function CartClient() {
     remove,
     clear,
   } = useCart();
+  const { confirm, ConfirmDialog } = useConfirm();
 
   if (lines.length === 0) return <EmptyCart />;
 
@@ -42,8 +44,8 @@ export default function CartClient() {
             </h1>
             <div className="flex items-center gap-4">
               <button
-                onClick={() => {
-                  if (window.confirm("Remove all items from your cart?"))
+                onClick={async () => {
+                  if (await confirm("Remove all items from your cart?"))
                     clear();
                 }}
                 className="text-xs font-bold text-ink-3 transition-colors hover:text-flame"
@@ -229,6 +231,7 @@ export default function CartClient() {
           </p>
         </aside>
       </div>
+      {ConfirmDialog}
     </div>
   );
 }

@@ -72,6 +72,17 @@ export const updateMedia = (productId, mediaId, body) =>
 export const deleteMedia = (productId, mediaId) =>
   api.delete(`/product/${productId}/media/${mediaId}`);
 
+// ── shipping (weight/dimensions used to pack orders) ──
+export const listAllProductShipping = () => api.get("/product/shipping");
+export const getProductShipping = (productId) =>
+  api.get("/product/shipping", { params: { productId } });
+export const createProductShipping = (productId, body) =>
+  api.post("/product/shipping", body, { params: { productId } });
+export const updateProductShipping = (id, body) =>
+  api.patch(`/product/shipping/${id}`, body);
+export const deleteProductShipping = (id) =>
+  api.delete(`/product/shipping/${id}`);
+
 // ── bulk ──
 export const downloadImportTemplate = () =>
   api.get("/product/bulk-template", { responseType: "blob" });

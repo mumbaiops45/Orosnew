@@ -14,8 +14,5 @@ export const login = (phone) => api.post("/auth/login", { phone });
 export const verifyLoginOtp = (body) =>
   api.post("/auth/login/otp-verify", body);
 
-/** POST /auth/admin/login — { email, password } -> { user, token } */
-export const adminLogin = (body) => api.post("/auth/admin/login", body);
-
 /** GET /auth/me -> { user } */
 export const getMe = () => api.get("/auth/me");

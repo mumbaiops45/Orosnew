@@ -3,8 +3,9 @@ import api from "@/lib/axios";
 /** POST /orders -> creates an order from the cart */
 export const createOrder = (body) => api.post("/orders", body);
 
-/** GET /orders/my-orders -> current user's orders */
-export const getMyOrders = () => api.get("/orders/my-orders");
+/** GET /orders/my-orders -> current user's orders, paginated */
+export const getMyOrders = (params = {}) =>
+  api.get("/orders/my-orders", { params });
 
 /** GET /orders/admin?userId= -> every order (admin) */
 export const getAdminOrders = (params = {}) =>

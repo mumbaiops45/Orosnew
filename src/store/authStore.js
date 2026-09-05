@@ -77,24 +77,6 @@ export const useAuthStore = create(
         }
       },
 
-      // ── email + password (admin) ──
-      adminLogin: async (email, password) => {
-        set({ loading: true, error: null });
-        try {
-          const data = await authApi.adminLogin({ email, password });
-          tokenStore.set(data.token);
-          set({ user: data.user, token: data.token, loading: false });
-          // the cart is customer-only — an admin session must not carry one
-          try {
-            useCartStore.setState({ lines: [], drawerOpen: false });
-          } catch {}
-          return data.user;
-        } catch (e) {
-          set({ loading: false, error: e.message });
-          throw e;
-        }
-      },
-
       loadMe: async () => {
         if (!tokenStore.get()) return null;
         try {

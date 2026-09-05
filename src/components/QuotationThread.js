@@ -14,6 +14,7 @@ import { updateQuotation } from "@/api/quotation.api";
 import { createQuotationOrder } from "@/api/order.api";
 import { payForOrder } from "@/lib/razorpay";
 import { useUser } from "@/store/authStore";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 const STATUS_TONE = {
   PENDING: "bg-gold-lt text-gold-dk",
@@ -71,6 +72,7 @@ export default function QuotationThread({
   const [payErr, setPayErr] = useState("");
   const [paying, setPaying] = useState(false);
   const fileRef = useRef(null);
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const messages = useMemo(
     () =>
@@ -114,7 +116,7 @@ export default function QuotationThread({
   };
 
   const cancel = async () => {
-    if (!window.confirm("Cancel this quotation request?")) return;
+    if (!(await confirm("Cancel this quotation request?"))) return;
     setErr("");
     setBusy(true);
     try {
@@ -410,6 +412,7 @@ export default function QuotationThread({
           <ArrowRight size={14} weight="bold" />
         </Link>
       )}
+      {ConfirmDialog}
     </div>
   );
 }

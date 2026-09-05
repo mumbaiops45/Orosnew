@@ -8,11 +8,13 @@ import * as productApi from "@/api/product.api";
 import * as categoryApi from "@/api/category.api";
 import * as subcategoryApi from "@/api/subcategory.api";
 import * as couponApi from "@/api/coupon.api";
+import * as bannerApi from "@/api/banner.api";
 import {
   normalizeProduct,
   normalizeProductList,
   normalizeCategoryList,
   normalizeSubcategoryList,
+  normalizeBannerList,
 } from "@/lib/normalize";
 
 const IS_OBJECT_ID = /^[a-f\d]{24}$/i;
@@ -84,6 +86,14 @@ export async function fetchSubcategories(categoryId) {
     .listSubcategories(params)
     .catch(swallow({ subCategory: [] }));
   return normalizeSubcategoryList(data.subCategory);
+}
+
+/** type: "SLIDER" | "SHOWREEL" — only the live ones, in admin-set order */
+export async function fetchBanners(type) {
+  const data = await bannerApi
+    .listBanners({ type, isActive: true })
+    .catch(swallow({ banners: [] }));
+  return normalizeBannerList(data.banners);
 }
 
 export async function fetchCoupons() {

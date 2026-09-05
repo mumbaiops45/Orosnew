@@ -18,6 +18,7 @@ import { formatINR } from "@/lib/format";
 import { fetchProducts } from "@/lib/catalog";
 import { payForOrder } from "@/lib/razorpay";
 import QuotationThread from "@/components/QuotationThread";
+import { useConfirm } from "@/components/ConfirmDialog";
 import * as userApi from "@/api/user.api";
 import * as orderApi from "@/api/order.api";
 import * as quotationApi from "@/api/quotation.api";
@@ -85,6 +86,8 @@ export default function AccountClient() {
 
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
+  const [ordersPage, setOrdersPage] = useState(1);
+  const [ordersPagination, setOrdersPagination] = useState(null);
   const [quotes, setQuotes] = useState([]);
   const [quotesLoading, setQuotesLoading] = useState(true);
   const [productMap, setProductMap] = useState(() => new Map());
@@ -97,16 +100,19 @@ export default function AccountClient() {
     }
   }, [hydrated, token, router]);
 
-  const loadOrders = () => {
+  const loadOrders = (page = ordersPage) => {
     if (!token) return;
     setOrdersLoading(true);
     orderApi
-      .getMyOrders()
+      .getMyOrders({ page, limit: 10 })
       .then((res) => {
-        const list = Array.isArray(res) ? res : res?.data || res?.orders || [];
-        setOrders(list);
+        setOrders(res?.orders || []);
+        setOrdersPagination(res?.pagination || null);
       })
-      .catch(() => setOrders([]))
+      .catch(() => {
+        setOrders([]);
+        setOrdersPagination(null);
+      })
       .finally(() => setOrdersLoading(false));
   };
 
@@ -120,10 +126,16 @@ export default function AccountClient() {
   };
 
   useEffect(() => {
-    loadOrders();
+    loadOrders(1);
+    setOrdersPage(1);
     loadQuotes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  useEffect(() => {
+    if (ordersPage !== 1) loadOrders(ordersPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ordersPage]);
 
   useEffect(() => {
     fetchProducts({ limit: 200 })
@@ -132,6 +144,11 @@ export default function AccountClient() {
       )
       .catch(() => {});
   }, []);
+
+  const quotesById = useMemo(
+    () => new Map(quotes.map((q) => [String(q._id), q])),
+    [quotes]
+  );
 
   const stats = useMemo(() => {
     const paid = orders.filter((o) =>
@@ -218,7 +235,13 @@ export default function AccountClient() {
         {/* ── panel ── */}
         <div>
           {tab === "dashboard" && (
-            <Dashboard stats={stats} orders={orders} loading={ordersLoading} onGo={go} />
+            <Dashboard
+              stats={stats}
+              orders={orders}
+              loading={ordersLoading}
+              onGo={go}
+              quotesById={quotesById}
+            />
           )}
           {tab === "orders" && (
             <Orders
@@ -226,6 +249,10 @@ export default function AccountClient() {
               loading={ordersLoading}
               onCancel={cancelOrder}
               onChange={loadOrders}
+              page={ordersPage}
+              setPage={setOrdersPage}
+              pagination={ordersPagination}
+              quotesById={quotesById}
             />
           )}
           {tab === "quotations" && (
@@ -256,7 +283,16 @@ function Card({ label, value }) {
   );
 }
 
-function Dashboard({ stats, orders, loading, onGo }) {
+function Row({ label, children }) {
+  return (
+    <div>
+      <dt className="text-ink-4">{label}</dt>
+      <dd className="font-semibold text-ink">{children}</dd>
+    </div>
+  );
+}
+
+function Dashboard({ stats, orders, loading, onGo, quotesById }) {
   const recent = orders.slice(0, 3);
   return (
     <div className="space-y-6">
@@ -285,7 +321,7 @@ function Dashboard({ stats, orders, loading, onGo }) {
         ) : (
           <ul className="divide-y divide-line">
             {recent.map((o) => (
-              <OrderRow key={o._id} order={o} />
+              <OrderRow key={o._id} order={o} quotesById={quotesById} />
             ))}
           </ul>
         )}
@@ -332,7 +368,16 @@ function Quotations({ quotes, loading, productMap, onChange }) {
   );
 }
 
-function Orders({ orders, loading, onCancel, onChange }) {
+function Orders({
+  orders,
+  loading,
+  onCancel,
+  onChange,
+  page,
+  setPage,
+  pagination,
+  quotesById,
+}) {
   if (loading)
     return <p className="text-sm text-ink-3">Loading your orders…</p>;
   if (orders.length === 0)
@@ -350,18 +395,51 @@ function Orders({ orders, loading, onCancel, onChange }) {
       </div>
     );
   return (
-    <ul className="space-y-3">
-      {orders.map((o) => (
-        <li key={o._id} className="rounded-xl border border-line bg-shell">
-          <OrderRow order={o} expanded onCancel={onCancel} onChange={onChange} />
-        </li>
-      ))}
-    </ul>
+    <div className="space-y-3">
+      <ul className="space-y-3">
+        {orders.map((o) => (
+          <li key={o._id} className="rounded-xl border border-line bg-shell">
+            <OrderRow
+              order={o}
+              expanded
+              onCancel={onCancel}
+              onChange={onChange}
+              quotesById={quotesById}
+            />
+          </li>
+        ))}
+      </ul>
+      {pagination && (pagination.totalPages > 1 || page > 1) && (
+        <div className="flex items-center justify-center gap-2 pt-1">
+          <button
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            className="rounded-md border border-line px-3 py-1.5 text-xs font-bold disabled:opacity-40"
+          >
+            Prev
+          </button>
+          <span className="text-xs text-ink-3">
+            Page {page} of {pagination.totalPages}
+          </span>
+          <button
+            disabled={!pagination.hasNextPage}
+            onClick={() => setPage((p) => p + 1)}
+            className="rounded-md border border-line px-3 py-1.5 text-xs font-bold disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
-function OrderRow({ order, expanded = false, onCancel, onChange }) {
+function OrderRow({ order, expanded = false, onCancel, onChange, quotesById }) {
   const items = order.items || [];
+  const quote =
+    order.source === "QUOTATION"
+      ? quotesById?.get?.(String(order.quotation?._id || order.quotation))
+      : null;
   // rows that don't start expanded (dashboard "recent orders") can be
   // clicked/viewed to reveal the same full detail as the main orders list
   const [open, setOpen] = useState(expanded);
@@ -369,6 +447,7 @@ function OrderRow({ order, expanded = false, onCancel, onChange }) {
   const [err, setErr] = useState("");
   const [paying, setPaying] = useState(false);
   const [payErr, setPayErr] = useState("");
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const pay = async () => {
     setPayErr("");
@@ -387,7 +466,7 @@ function OrderRow({ order, expanded = false, onCancel, onChange }) {
   };
 
   const cancel = async () => {
-    if (!window.confirm("Cancel this order? This can't be undone.")) return;
+    if (!(await confirm("Cancel this order? This can't be undone."))) return;
     setErr("");
     setBusy(true);
     try {
@@ -456,6 +535,86 @@ function OrderRow({ order, expanded = false, onCancel, onChange }) {
           ))}
         </ul>
       )}
+      {open && order.source === "QUOTATION" && order.quotation && (
+        <div className="mt-3 space-y-2 rounded-lg border border-line bg-canvas/60 p-3">
+          <p className="text-xs font-bold uppercase tracking-wide text-ink-4">
+            Quotation details
+          </p>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-2">
+            <span>
+              <span className="text-ink-4">Quotation no. </span>
+              <span className="font-semibold text-ink">
+                {order.quotation.refNumber}
+              </span>
+            </span>
+            <span>
+              <span className="text-ink-4">Type </span>
+              <span className="font-semibold text-ink">
+                {order.quotation.type}
+              </span>
+            </span>
+            {quote?.status && (
+              <span>
+                <span className="text-ink-4">Quote status </span>
+                <span className="font-semibold text-ink">
+                  {quote.status.replace(/_/g, " ")}
+                </span>
+              </span>
+            )}
+            {quote?.validTill && (
+              <span>
+                <span className="text-ink-4">Valid till </span>
+                <span className="font-semibold text-ink">
+                  {new Date(quote.validTill).toLocaleDateString("en-IN", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </span>
+              </span>
+            )}
+          </div>
+
+          {quote?.requirements && (
+            <p className="whitespace-pre-line text-xs text-ink-2">
+              {quote.requirements}
+            </p>
+          )}
+
+          {quote && (quote.subTotal || quote.tax || quote.shipping || quote.total) ? (
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
+              <Row label="Subtotal">{formatINR(quote.subTotal || 0)}</Row>
+              <Row label="Tax">{formatINR(quote.tax || 0)}</Row>
+              <Row label="Shipping">{formatINR(quote.shipping || 0)}</Row>
+              <Row label="Quoted total">{formatINR(quote.total || 0)}</Row>
+            </dl>
+          ) : null}
+
+          {quote && (quote.files || []).length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {quote.files.map((f) => (
+                <a
+                  key={f._id}
+                  href={f.fileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-semibold text-flame hover:underline"
+                >
+                  {f.fileName || "file"}
+                </a>
+              ))}
+            </div>
+          )}
+
+          <Link
+            href="/account?tab=quotations"
+            className="inline-block text-xs font-bold text-flame hover:underline"
+          >
+            View full conversation →
+          </Link>
+        </div>
+      )}
+
       {open && (order.shipping?.courierName || order.shipping?.estimatedDelivery) && (
         <p className="mt-2 text-[11px] text-ink-3">
           Delivery: {order.shipping.courierName || "Courier"}
@@ -509,6 +668,7 @@ function OrderRow({ order, expanded = false, onCancel, onChange }) {
           )}
         </div>
       )}
+      {ConfirmDialog}
     </div>
   );
 }

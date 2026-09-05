@@ -15,6 +15,9 @@
   --color-ink-4: #a99ec2;
   --color-ink-5: #cfc7de;
 
+  /* Banner scrim — dark navy, distinct from ink so hero/showreel photos read as lit */
+  --color-navy: #0a1a33;
+
   /* Grounds — cards sit white on a warm grey canvas */
   --color-canvas: #f2eff5;
   --color-shell: #ffffff;

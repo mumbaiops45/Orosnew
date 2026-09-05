@@ -57,7 +57,10 @@ export default function AdminClient() {
   const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
-    if (hydrated && !isAdmin) router.replace("/admin/login");
+    if (hydrated && !isAdmin) {
+      window.dispatchEvent(new CustomEvent("oros:require-auth"));
+      router.replace("/");
+    }
   }, [hydrated, isAdmin, router]);
 
   if (!hydrated)
