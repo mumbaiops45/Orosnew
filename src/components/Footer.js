@@ -9,7 +9,6 @@ import {
   EnvelopeSimple,
   MapPin,
 } from "@phosphor-icons/react/ssr";
-import NotifyForm from "@/components/NotifyForm";
 import { fetchCategories, fetchProducts } from "@/lib/catalog";
 
 export const dynamic = "force-dynamic";
@@ -125,43 +124,31 @@ export default async function Footer() {
             </ul>
           </nav>
 
-          {/* ── Wholesale + notify ── */}
-          <div className="space-y-8">
-            <div>
-              <h3 className="mb-4 text-[11px] font-bold uppercase tracking-[0.16em] text-white/35">
-                Wholesale
-              </h3>
-              <Link
-                href="/bulk"
-                className="group block rounded-2xl border border-gold/40 bg-gold/8 p-5 transition-colors hover:bg-gold/15"
-              >
-                <p className="font-display text-lg font-extrabold text-gold">
-                  Price a production run
-                </p>
-                <p className="mt-1.5 text-sm leading-relaxed text-white/60">
-                  Per-unit rates at every tier, machine hours and a realistic
-                  lead time — worked out on the live catalogue.
-                </p>
-                <span className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-gold">
-                  Open the calculator
-                  <ArrowUpRight
-                    size={13}
-                    weight="bold"
-                    className="transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-                  />
-                </span>
-              </Link>
-            </div>
-
-            <div>
-              <h3 className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em] text-white/35">
-                New objects
-              </h3>
-              <p className="mb-3 text-sm text-white/55">
-                We add a few every month. No other email, ever.
+          {/* ── Wholesale ── */}
+          <div>
+            <h3 className="mb-4 text-[11px] font-bold uppercase tracking-[0.16em] text-white/35">
+              Wholesale
+            </h3>
+            <Link
+              href="/bulk"
+              className="group block rounded-2xl border border-gold/40 bg-gold/8 p-5 transition-colors hover:bg-gold/15"
+            >
+              <p className="font-display text-lg font-extrabold text-gold">
+                Price a production run
               </p>
-              <NotifyForm />
-            </div>
+              <p className="mt-1.5 text-sm leading-relaxed text-white/60">
+                Per-unit rates at every tier, machine hours and a realistic lead
+                time — worked out on the live catalogue.
+              </p>
+              <span className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-gold">
+                Open the calculator
+                <ArrowUpRight
+                  size={13}
+                  weight="bold"
+                  className="transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+                />
+              </span>
+            </Link>
           </div>
         </div>
 
@@ -185,6 +172,18 @@ export default async function Footer() {
                   {m}
                 </span>
               ))}
+            </span>
+            <span className="hidden h-3 w-px bg-white/15 sm:block" />
+            <span>
+              Designed by{" "}
+              <a
+                href="https://www.nakshatranamahacreations.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-white/55 transition-colors hover:text-neon-2"
+              >
+                Nakshatra Namaha Creations
+              </a>
             </span>
           </div>
         </div>
