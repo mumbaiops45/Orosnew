@@ -53,6 +53,21 @@ function withAttachmentFlag(url) {
   return `${url.slice(0, i + marker.length)}fl_attachment/${url.slice(i + marker.length)}`;
 }
 
+// forces a real "save as" for either backend: 3D models are served by our
+// own /quotation/files/:id route (takes ?download=1), everything else is
+// a Cloudinary URL and needs the fl_attachment flag
+function downloadHref(file) {
+  const url = file?.fileUrl;
+  if (!url) return url;
+  if (url.includes("/quotation/files/")) {
+    const sep = url.includes("?") ? "&" : "?";
+    return `${url}${sep}download=1&name=${encodeURIComponent(
+      file.fileName || "model"
+    )}`;
+  }
+  return withAttachmentFlag(url);
+}
+
 /**
  * One quotation, end to end: the desk's pricing, the running conversation,
  * and — once the desk marks it ACCEPTED — the button that pays for it and
@@ -239,7 +254,7 @@ export default function QuotationThread({
                 {f.fileName || "file"}
               </a>
               <a
-                href={withAttachmentFlag(f.fileUrl)}
+                href={downloadHref(f)}
                 download={f.fileName || true}
                 aria-label={`Download ${f.fileName || "file"}`}
                 className="grid h-6 w-6 place-items-center rounded text-ink-3 hover:bg-canvas hover:text-ink"

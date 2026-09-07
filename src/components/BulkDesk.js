@@ -11,6 +11,14 @@ import { getAddress } from "@/api/address.api";
 import { useAuthStore } from "@/store/authStore";
 import QuotationThread from "@/components/QuotationThread";
 
+// the quotation upload middleware only accepts 3D model files — keep this
+// list in sync with ALLOWED_3D_FORMATS in the backend upload middleware
+const MODEL_FORMATS = [".stl", ".obj", ".step", ".stp", ".3mf", ".iges", ".igs"];
+const MODEL_ACCEPT = MODEL_FORMATS.join(",");
+const MODEL_MAX_MB = 100;
+const isModelFile = (name = "") =>
+  MODEL_FORMATS.includes(name.toLowerCase().slice(name.lastIndexOf(".")));
+
 // wraps a required input/select and drops a red asterisk in the corner —
 // these fields have no visible label, only a placeholder, so this is the
 // only way to flag "required" without redesigning the whole form
@@ -220,6 +228,7 @@ export default function BulkDesk() {
       // no preferred product picked — that's fine, the desk prices a
       // free-text custom request by hand; the backend defaults its
       // placeholder item to qty 1
+      // POST /quotation reads these off the "files" field (multer .array("files"))
       for (const f of files) fd.append("files", f);
 
       const res = await createQuotation(fd);
@@ -653,14 +662,44 @@ export default function BulkDesk() {
 
               <label className="rounded-xl border border-dashed border-line px-4 py-3 text-sm text-ink-3 sm:col-span-2">
                 <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-ink-4">
-                  Reference files (optional, up to 10)
+                  3D model files (optional, up to 10)
+                  <span className="normal-case font-normal tracking-normal text-ink-3">
+                    {" "}
+                    — {MODEL_FORMATS.join(", ")}
+                  </span>
                 </span>
                 <input
                   type="file"
                   multiple
-                  onChange={(e) =>
-                    setFiles(Array.from(e.target.files || []).slice(0, 10))
-                  }
+                  accept={MODEL_ACCEPT}
+                  onChange={(e) => {
+                    const picked = Array.from(e.target.files || []);
+                    const wrongType = picked.filter((f) => !isModelFile(f.name));
+                    const tooBig = picked.filter(
+                      (f) =>
+                        isModelFile(f.name) &&
+                        f.size > MODEL_MAX_MB * 1024 * 1024
+                    );
+                    const ok = picked.filter(
+                      (f) =>
+                        isModelFile(f.name) &&
+                        f.size <= MODEL_MAX_MB * 1024 * 1024
+                    );
+                    setErr(
+                      tooBig.length
+                        ? `${
+                            tooBig.length === 1
+                              ? tooBig[0].name
+                              : `${tooBig.length} files`
+                          } exceed the ${MODEL_MAX_MB} MB limit and were skipped`
+                        : wrongType.length
+                          ? `Some files were skipped — only 3D models (${MODEL_FORMATS.join(
+                              ", "
+                            )}) can be attached`
+                          : ""
+                    );
+                    setFiles(ok.slice(0, 10));
+                  }}
                   className="block w-full text-xs text-ink-2 file:mr-3 file:rounded-lg file:border-0 file:bg-canvas file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-ink"
                 />
                 {files.length > 0 && (

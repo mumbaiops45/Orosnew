@@ -3378,7 +3378,7 @@ export function Quotations() {
                           <Eye size={12} />
                         </a>
                         <a
-                          href={withAttachmentFlag(f.fileUrl)}
+                          href={downloadHref(f)}
                           download={f.fileName || true}
                           aria-label={`Download ${f.fileName || "file"}`}
                           className="grid h-5 w-5 place-items-center text-ink-3 hover:text-ink"
@@ -3442,6 +3442,21 @@ function withAttachmentFlag(url) {
   const i = url.indexOf(marker);
   if (i === -1 || url.includes("fl_attachment")) return url;
   return `${url.slice(0, i + marker.length)}fl_attachment/${url.slice(i + marker.length)}`;
+}
+
+// forces a real "save as" for either storage backend: 3D models are
+// served by our own /quotation/files/:id route (takes ?download=1),
+// everything else is a Cloudinary URL needing the fl_attachment flag
+function downloadHref(file) {
+  const url = file?.fileUrl;
+  if (!url) return url;
+  if (url.includes("/quotation/files/")) {
+    const sep = url.includes("?") ? "&" : "?";
+    return `${url}${sep}download=1&name=${encodeURIComponent(
+      file.fileName || "model"
+    )}`;
+  }
+  return withAttachmentFlag(url);
 }
 
 function QuotationModal({ quotation, onClose, onSaved }) {
@@ -3519,19 +3534,69 @@ function QuotationModal({ quotation, onClose, onSaved }) {
     <Modal title={`Quotation ${quotation.refNumber}`} onClose={onClose} wide>
       <div className="space-y-4 text-sm">
         <div className="rounded-lg border border-line bg-canvas p-3 text-xs">
-          <p>
-            <b>{quotation.name}</b> · {quotation.phone}
-            {quotation.email ? ` · ${quotation.email}` : ""}
-          </p>
-          {quotation.company && <p>Company: {quotation.company}</p>}
+          <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
+            <dt className="font-bold uppercase tracking-wide text-ink-4">Name</dt>
+            <dd className="font-semibold text-ink">{quotation.name || "—"}</dd>
+
+            <dt className="font-bold uppercase tracking-wide text-ink-4">Phone</dt>
+            <dd className="text-ink-2">{quotation.phone || "—"}</dd>
+
+            <dt className="font-bold uppercase tracking-wide text-ink-4">Email</dt>
+            <dd className="text-ink-2">{quotation.email || "—"}</dd>
+
+            {quotation.company && (
+              <>
+                <dt className="font-bold uppercase tracking-wide text-ink-4">
+                  Company
+                </dt>
+                <dd className="text-ink-2">{quotation.company}</dd>
+              </>
+            )}
+
+            {quotation.taxRegNo && (
+              <>
+                <dt className="font-bold uppercase tracking-wide text-ink-4">
+                  GST / Tax no.
+                </dt>
+                <dd className="text-ink-2">{quotation.taxRegNo}</dd>
+              </>
+            )}
+
+            {quotation.deadline && (
+              <>
+                <dt className="font-bold uppercase tracking-wide text-ink-4">
+                  Needed by
+                </dt>
+                <dd className="text-ink-2">
+                  {new Date(quotation.deadline).toLocaleDateString("en-IN")}
+                </dd>
+              </>
+            )}
+
+            {quotation.shippingAddress?.city && (
+              <>
+                <dt className="font-bold uppercase tracking-wide text-ink-4">
+                  Ship to
+                </dt>
+                <dd className="text-ink-2">
+                  {[
+                    quotation.shippingAddress.addressLine1,
+                    quotation.shippingAddress.addressLine2,
+                    quotation.shippingAddress.city,
+                    quotation.shippingAddress.state,
+                    quotation.shippingAddress.pincode,
+                    quotation.shippingAddress.country,
+                  ]
+                    .filter(Boolean)
+                    .join(", ")}
+                </dd>
+              </>
+            )}
+          </dl>
+
           {quotation.requirements && (
-            <p className="mt-1">{quotation.requirements}</p>
-          )}
-          {quotation.shippingAddress?.city && (
-            <p className="mt-1 text-ink-3">
-              Ship to: {quotation.shippingAddress.addressLine1},{" "}
-              {quotation.shippingAddress.city}, {quotation.shippingAddress.state}{" "}
-              {quotation.shippingAddress.pincode}
+            <p className="mt-2 whitespace-pre-line border-t border-line pt-2 text-ink-2">
+              {quotation.requirements}
             </p>
           )}
         </div>
@@ -3556,7 +3621,7 @@ function QuotationModal({ quotation, onClose, onSaved }) {
                     {file.fileName || "file"}
                   </a>
                   <a
-                    href={withAttachmentFlag(file.fileUrl)}
+                    href={downloadHref(file)}
                     download={file.fileName || true}
                     aria-label={`Download ${file.fileName || "file"}`}
                     className="grid h-6 w-6 place-items-center rounded text-ink-3 hover:bg-canvas hover:text-ink"
