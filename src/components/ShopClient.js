@@ -6,14 +6,12 @@ import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { CaretDown, CaretRight, X, Check } from "@phosphor-icons/react";
 import ProductCard from "@/components/ProductCard";
 import PriceRange from "@/components/PriceRange";
-import { discountPct, formatINR } from "@/lib/format";
+import { formatINR } from "@/lib/format";
 import { fetchCategories, fetchSubcategories, fetchProducts } from "@/lib/catalog";
 
 const SORTS = [
-  { id: "popularity", label: "Featured" },
   { id: "price-asc", label: "Price — low to high" },
   { id: "price-desc", label: "Price — high to low" },
-  { id: "discount", label: "Discount" },
   { id: "new", label: "Newest" },
 ];
 
@@ -37,7 +35,7 @@ export default function ShopClient() {
   const [bounds, setBounds] = useState({ min: 0, max: 10000 });
   const [price, setPrice] = useState([0, 10000]);
   const [applied, setApplied] = useState([0, 10000]);
-  const [sort, setSort] = useState("popularity");
+  const [sort, setSort] = useState("price-asc");
   const [openFilter, setOpenFilter] = useState(null);
   const bar = useRef(null);
 
@@ -138,13 +136,11 @@ export default function ShopClient() {
     const by = {
       "price-asc": (a, b) => a.price - b.price,
       "price-desc": (a, b) => b.price - a.price,
-      discount: (a, b) => discountPct(b) - discountPct(a),
       new: (a, b) =>
         new Date(b.createdAt || 0).getTime() -
         new Date(a.createdAt || 0).getTime(),
-      popularity: (a, b) => (b.totalSold || 0) - (a.totalSold || 0),
     };
-    return [...products].sort(by[sort] || by.popularity);
+    return [...products].sort(by[sort] || by["price-asc"]);
   }, [products, sort]);
 
   const chips = priceTouched
