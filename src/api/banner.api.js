@@ -13,3 +13,4 @@ export const updateBanner = (id, formData) =>
   api.put(`/Banner/${id}`, formData, {
     headers: { "Content-Type": "multipart/form-data" },
   });
+export const deleteBanner = (id) => api.delete(`/Banner/${id}`);

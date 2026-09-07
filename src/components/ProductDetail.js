@@ -43,8 +43,30 @@ export default function ProductDetail({ product: p }) {
   const art = useRef(null);
 
   const images = p.images?.length ? p.images : [p.image];
-  const unit = useMemo(() => unitPriceFor(p, qty), [p, qty]);
-  const tiered = unit < p.price;
+
+  // the option-value objects the customer has actually picked — these carry
+  // priceDelta / priceMultiplier and drive both the displayed price and the
+  // cart line
+  const chosenValues = useMemo(
+    () =>
+      (p.options || [])
+        .map((o) => (o.values || []).find((v) => v.value === selected[o.name]))
+        .filter(Boolean),
+    [p.options, selected]
+  );
+
+  const unit = useMemo(
+    () => unitPriceFor(p, qty, chosenValues),
+    [p, qty, chosenValues]
+  );
+  // the single-unit price with the same options applied — so "bulk rate"
+  // only lights up when the tier actually discounts, not because an option
+  // surcharge moved the number
+  const optionedBase = useMemo(
+    () => unitPriceFor(p, p.minQty || 1, chosenValues),
+    [p, chosenValues]
+  );
+  const tiered = unit < optionedBase;
   const lineTotal = unit * qty;
   const off =
     p.compareAt && p.compareAt > unit
@@ -62,7 +84,16 @@ export default function ProductDetail({ product: p }) {
   const nextTier = tiers[tierIndex + 1];
 
   const selectedOptions = () =>
-    (p.options || []).map((o) => ({ name: o.name, value: selected[o.name] }));
+    (p.options || []).map((o) => {
+      const v = (o.values || []).find((x) => x.value === selected[o.name]);
+      return {
+        name: o.name,
+        value: selected[o.name],
+        priceDelta: Number(v?.priceDelta) || 0,
+        priceMultiplier:
+          v?.priceMultiplier != null ? Number(v.priceMultiplier) : 1,
+      };
+    });
 
   // every option must be chosen — a variant product can't go in the cart
   // until we know which variant it is

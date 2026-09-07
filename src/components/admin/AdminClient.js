@@ -18,6 +18,7 @@ import {
   List,
   Image as ImageIcon,
   FileText,
+  ShoppingCart,
 } from "@phosphor-icons/react";
 import { useAuthStore, useUser } from "@/store/authStore";
 import {
@@ -30,6 +31,7 @@ import {
   Coupons,
   UsersTab,
   ManualOrder,
+  AbandonedCarts,
   Banners,
   Quotations,
 } from "@/components/admin/tabs";
@@ -42,6 +44,12 @@ const TABS = [
   { id: "products", label: "Products", icon: Cube, Comp: Products },
   { id: "categories", label: "Categories", icon: SquaresFour, Comp: Categories },
   { id: "subcategories", label: "Subcategories", icon: Stack, Comp: Subcategories },
+  {
+    id: "abandoned-carts",
+    label: "Abandoned carts",
+    icon: ShoppingCart,
+    Comp: AbandonedCarts,
+  },
   { id: "coupons", label: "Coupons", icon: Tag, Comp: Coupons },
   { id: "users", label: "Users", icon: Users, Comp: UsersTab },
   { id: "manual-order", label: "Manual order", icon: Plus, Comp: ManualOrder },

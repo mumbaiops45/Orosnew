@@ -68,13 +68,37 @@ export default function ProductCard({ product: p, className = "" }) {
       return;
     }
 
-    // a product with variants can't be quick-added — send them to the page
-    if (p.options?.length > 0) {
-      router.push(`/shop/${p.slug}`);
-      return;
+    // quick-add at the baseline config: for every REQUIRED option pick the
+    // value that doesn't move the price (priceDelta 0, priceMultiplier 1).
+    // Optional options are left off entirely. If a required option needs
+    // typed/uploaded input, or has no zero-cost value, there's no safe
+    // default — open the product page instead.
+    const baseline = [];
+    for (const opt of p.options || []) {
+      if (!opt.isRequired) continue;
+      if (opt.type === "TEXT" || opt.type === "FILE") {
+        router.push(`/shop/${p.slug}`);
+        return;
+      }
+      const v = (opt.values || []).find(
+        (x) =>
+          (Number(x.priceDelta) || 0) === 0 &&
+          (x.priceMultiplier == null || Number(x.priceMultiplier) === 1)
+      );
+      if (!v) {
+        router.push(`/shop/${p.slug}`);
+        return;
+      }
+      baseline.push({
+        name: opt.name,
+        value: v.value,
+        priceDelta: 0,
+        priceMultiplier: 1,
+      });
     }
 
     add(p, {
+      options: baseline,
       qty: p.minQty || 1,
       origin: art.current?.getBoundingClientRect(),
     });

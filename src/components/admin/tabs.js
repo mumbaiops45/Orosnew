@@ -12,6 +12,7 @@ import * as couponApi from "@/api/coupon.api";
 import * as userApi from "@/api/user.api";
 import * as bannerApi from "@/api/banner.api";
 import * as quotationApi from "@/api/quotation.api";
+import * as cartApi from "@/api/cart.api";
 import { useConfirm } from "@/components/ConfirmDialog";
 
 /* ══════════ shared primitives ══════════ */
@@ -3098,6 +3099,215 @@ export function ManualOrder() {
   );
 }
 
+/* ══════════ ABANDONED CARTS ══════════ */
+
+/**
+ * Read-only view of every customer's live cart — GET /cart/admin groups
+ * Cart rows by user and side-loads the user + product docs. The aggregate
+ * hands back `products` (product id + qty) and a separate `productDetails`
+ * array, so we join them by id here to show line items and a cart value
+ * (qty × current base price — the aggregate doesn't carry the stored
+ * unitPrice).
+ */
+export function AbandonedCarts() {
+  const { data, loading, error } = useAsync(() => cartApi.getAllCarts(), []);
+  const [open, setOpen] = useState(null);
+
+  const rows = (data?.carts || []).map((c) => {
+    const byId = new Map(
+      (c.productDetails || []).map((p) => [String(p._id), p])
+    );
+    const lines = (c.products || []).map((li, i) => {
+      const p = byId.get(String(li.product));
+      // the cart line stores the priced unit (base ± option pricing); fall
+      // back to the product's base price for older rows
+      const unitPrice =
+        li.unitPrice != null ? Number(li.unitPrice) : Number(p?.basePrice) || 0;
+      return {
+        key: `${li.product}-${i}`,
+        name: p?.name || "Unknown product",
+        sku: p?.sku || "",
+        slug: p?.slug || "",
+        status: p?.status || "",
+        blurb: p?.shortDescription || "",
+        qty: Number(li.qty) || 0,
+        unitPrice,
+        basePrice: Number(p?.basePrice) || 0,
+        options: (li.selectedOptions || []).map((o) => ({
+          name: o.name,
+          value: o.value,
+          priceDelta: Number(o.priceDelta) || 0,
+          priceMultiplier:
+            o.priceMultiplier != null ? Number(o.priceMultiplier) : 1,
+        })),
+      };
+    });
+    return {
+      id: String(c._id),
+      user: c.user || {},
+      lines,
+      units: lines.reduce((n, l) => n + l.qty, 0),
+      value: lines.reduce((n, l) => n + l.qty * l.unitPrice, 0),
+    };
+  });
+
+  const totalUnits = rows.reduce((n, r) => n + r.units, 0);
+  const totalValue = rows.reduce((n, r) => n + r.value, 0);
+
+  if (loading) return <p className="text-sm text-ink-3">Loading carts…</p>;
+
+  return (
+    <div className="space-y-4">
+      <Msg error={error} />
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-line bg-shell p-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-ink-4">
+            Abandoned carts
+          </p>
+          <p className="mt-1 font-display text-xl font-extrabold">{rows.length}</p>
+        </div>
+        <div className="rounded-xl border border-line bg-shell p-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-ink-4">
+            Units in carts
+          </p>
+          <p className="mt-1 font-display text-xl font-extrabold">{totalUnits}</p>
+        </div>
+        <div className="rounded-xl border border-line bg-shell p-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-ink-4">
+            Recoverable value
+          </p>
+          <p className="mt-1 font-display text-xl font-extrabold">
+            {formatINR(totalValue)}
+          </p>
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="rounded-xl border border-line bg-shell px-4 py-8 text-center text-sm text-ink-3">
+          No carts
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {rows.map((r) => {
+            const isOpen = open === r.id;
+            return (
+              <div
+                key={r.id}
+                className="overflow-hidden rounded-xl border border-line bg-shell"
+              >
+                <button
+                  onClick={() => setOpen(isOpen ? null : r.id)}
+                  className="flex w-full flex-col gap-2 px-4 py-3 text-left sm:flex-row sm:items-center sm:gap-4"
+                >
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <p className="truncate text-sm text-ink">
+                      <span className="text-ink-4">Name: </span>
+                      <span className="font-bold">{r.user.name || "—"}</span>
+                    </p>
+                    <p className="truncate text-xs text-ink-3">
+                      <span className="text-ink-4">Mobile: </span>
+                      {r.user.phone || "—"}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-4">
+                    <span className="text-xs text-ink-3">
+                      {r.lines.length}{" "}
+                      {r.lines.length === 1 ? "item" : "items"} · {r.units} units
+                    </span>
+                    <span className="font-bold text-ink">
+                      {formatINR(r.value)}
+                    </span>
+                    <span className="text-xs font-bold text-flame">
+                      {isOpen ? "Hide" : "View"}
+                    </span>
+                  </div>
+                </button>
+
+                {isOpen && (
+                  <div className="border-t border-line bg-canvas/50 p-3 sm:p-4">
+                    {r.lines.length === 0 ? (
+                      <p className="text-xs text-ink-3">Empty cart</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {r.lines.map((l) => (
+                          <div
+                            key={l.key}
+                            className="flex flex-col gap-2 rounded-lg border border-line bg-shell px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="break-words text-sm font-bold text-ink">
+                                {l.name}
+                              </p>
+                              <p className="text-xs text-ink-3">
+                                {l.sku ? `${l.sku} · ` : ""}
+                                {l.status || "—"}
+                                {l.slug && (
+                                  <>
+                                    {" · "}
+                                    <a
+                                      href={`/shop/${l.slug}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="font-bold text-flame hover:underline"
+                                    >
+                                      View product
+                                    </a>
+                                  </>
+                                )}
+                              </p>
+                              {l.blurb && (
+                                <p className="mt-0.5 line-clamp-2 text-xs text-ink-3 sm:truncate">
+                                  {l.blurb}
+                                </p>
+                              )}
+                              {l.options.length > 0 && (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {l.options.map((o) => (
+                                    <span
+                                      key={o.name}
+                                      className="rounded bg-canvas px-1.5 py-0.5 text-[11px] text-ink-2"
+                                    >
+                                      {o.name}: <b>{o.value}</b>
+                                      {o.priceDelta
+                                        ? ` (${o.priceDelta > 0 ? "+" : ""}${formatINR(o.priceDelta)})`
+                                        : ""}
+                                      {o.priceMultiplier && o.priceMultiplier !== 1
+                                        ? ` (×${o.priceMultiplier})`
+                                        : ""}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex shrink-0 items-baseline justify-between gap-2 border-t border-line pt-2 text-xs sm:block sm:border-0 sm:pt-0 sm:text-right">
+                              <p className="text-ink-2">
+                                {formatINR(l.unitPrice)} × {l.qty}
+                              </p>
+                              {l.basePrice > 0 && l.unitPrice !== l.basePrice && (
+                                <p className="text-[11px] text-ink-4 sm:text-right">
+                                  base {formatINR(l.basePrice)}
+                                </p>
+                              )}
+                              <p className="text-sm font-extrabold text-ink">
+                                {formatINR(l.qty * l.unitPrice)}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ══════════ BANNERS ══════════ */
 
 export function Banners() {
@@ -3108,12 +3318,23 @@ export function Banners() {
   const rows = data?.banners || [];
   const [editing, setEditing] = useState(null);
   const [msg, setMsg] = useState("");
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const toggleActive = async (b) => {
     try {
       const fd = new FormData();
       fd.append("isActive", String(!b.isActive));
       await bannerApi.updateBanner(b._id, fd);
+      reload();
+    } catch (e) {
+      setMsg(e.message);
+    }
+  };
+
+  const remove = async (b) => {
+    if (!(await confirm("Delete this banner?", "Delete"))) return;
+    try {
+      await bannerApi.deleteBanner(b._id);
       reload();
     } catch (e) {
       setMsg(e.message);
@@ -3147,7 +3368,9 @@ export function Banners() {
                 )}
               </td>
               <td className="px-4 py-3 font-bold">{b.type}</td>
-              <td className="px-4 py-3">{b.title || "—"}</td>
+              <td className="px-4 py-3">
+                {[b.title1, b.title2].filter(Boolean).join(" ") || "—"}
+              </td>
               <td className="px-4 py-3">{b.order}</td>
               <td className="px-4 py-3">
                 <button
@@ -3162,9 +3385,22 @@ export function Banners() {
                 </button>
               </td>
               <td className="px-4 py-3">
-                <button className={iconBtn} onClick={() => setEditing(b)}>
-                  <PencilSimple size={14} />
-                </button>
+                <div className="flex gap-1.5">
+                  <button
+                    className={iconBtn}
+                    onClick={() => setEditing(b)}
+                    aria-label="Edit"
+                  >
+                    <PencilSimple size={14} />
+                  </button>
+                  <button
+                    className={iconBtn}
+                    onClick={() => remove(b)}
+                    aria-label="Delete banner"
+                  >
+                    <Trash size={14} />
+                  </button>
+                </div>
               </td>
             </tr>
           ))}
@@ -3187,6 +3423,7 @@ export function Banners() {
           }}
         />
       )}
+      {ConfirmDialog}
     </div>
   );
 }
@@ -3195,8 +3432,12 @@ function BannerModal({ row, onClose, onSaved }) {
   const [f, setF] = useState({
     type: row?.type || "SLIDER",
     kicker: row?.kicker || "",
-    title: row?.title || "",
+    title1: row?.title1 || row?.title || "",
+    title1Color: row?.title1Color || "#2b1b4d",
+    title2: row?.title2 || "",
+    title2Color: row?.title2Color || "#ff5a2c",
     subTitle: row?.subTitle || "",
+    subTitleColor: row?.subTitleColor || "#2b1b4d",
     ctaLabel: row?.ctaLabel || "",
     ctaUrl: row?.ctaUrl || "",
     tone: row?.tone || "LIGHT",
@@ -3218,8 +3459,12 @@ function BannerModal({ row, onClose, onSaved }) {
       const fd = new FormData();
       fd.append("type", f.type);
       fd.append("kicker", f.kicker);
-      fd.append("title", f.title);
+      fd.append("title1", f.title1);
+      fd.append("title1Color", f.title1Color);
+      fd.append("title2", f.title2);
+      fd.append("title2Color", f.title2Color);
       fd.append("subTitle", f.subTitle);
+      fd.append("subTitleColor", f.subTitleColor);
       fd.append("ctaLabel", f.ctaLabel);
       fd.append("ctaUrl", f.ctaUrl);
       fd.append("tone", f.tone);
@@ -3266,8 +3511,27 @@ function BannerModal({ row, onClose, onSaved }) {
           ]}
         />
         <Field label="Kicker" value={f.kicker} onChange={set("kicker")} />
-        <Field label="Title" value={f.title} onChange={set("title")} />
+        <Field label="Title 1" value={f.title1} onChange={set("title1")} />
+        <Field
+          label="Title 1 colour"
+          type="color"
+          value={f.title1Color}
+          onChange={set("title1Color")}
+        />
+        <Field label="Title 2" value={f.title2} onChange={set("title2")} />
+        <Field
+          label="Title 2 colour"
+          type="color"
+          value={f.title2Color}
+          onChange={set("title2Color")}
+        />
         <Field label="Subtitle" value={f.subTitle} onChange={set("subTitle")} />
+        <Field
+          label="Subtitle colour"
+          type="color"
+          value={f.subTitleColor}
+          onChange={set("subTitleColor")}
+        />
         <Field label="CTA label" value={f.ctaLabel} onChange={set("ctaLabel")} />
         <Field label="CTA url" value={f.ctaUrl} onChange={set("ctaUrl")} />
         <label className="block">

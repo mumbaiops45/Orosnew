@@ -12,7 +12,7 @@ import TwoToneHeading from "@/components/TwoToneHeading";
  * kicker, title, subtitle, CTA and tone all live there. `tone` (LIGHT/DARK,
  * admin-picked per banner) drives which of these two palettes the chrome
  * — kicker chip, scrim, CTA pill, arrows, dots — renders in; the title
- * itself is always lead-blue/last-word-orange regardless of tone.
+ * parts and subtitle carry their own admin-picked colours regardless of tone.
  */
 const TONE = {
   light: {
@@ -128,7 +128,10 @@ export default function BannerCarousel({ banners = [] }) {
               )}
 
               <TwoToneHeading
-                text={slide.title}
+                title1={slide.title1}
+                title2={slide.title2}
+                title1Color={slide.title1Color}
+                title2Color={slide.title2Color}
                 data-slide-anim
                 className="max-w-xl font-display text-[clamp(2rem,4.8vw,3.5rem)] font-extrabold leading-[1.02] tracking-[-0.03em]"
               />
@@ -136,6 +139,7 @@ export default function BannerCarousel({ banners = [] }) {
               {slide.subTitle && (
                 <p
                   data-slide-anim
+                  style={slide.subTitleColor ? { color: slide.subTitleColor } : undefined}
                   className={`mt-4 max-w-lg text-sm leading-relaxed sm:text-base ${t.sub}`}
                 >
                   {slide.subTitle}
@@ -146,7 +150,15 @@ export default function BannerCarousel({ banners = [] }) {
                 <Link
                   data-slide-anim
                   href={slide.ctaUrl}
-                  className={`mt-8 inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-sm font-extrabold transition-all duration-300 hover:-translate-y-0.5 ${t.cta}`}
+                  style={{
+                    "--cta-bg": slide.title1Color || undefined,
+                    "--cta-bg-hover": slide.title2Color || undefined,
+                  }}
+                  className={`mt-8 inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-sm font-extrabold transition-all duration-300 hover:-translate-y-0.5 ${
+                    slide.title1Color
+                      ? "bg-[var(--cta-bg)] text-white hover:bg-[var(--cta-bg-hover)]"
+                      : t.cta
+                  }`}
                 >
                   {slide.ctaLabel}
                   <CaretRight size={15} weight="bold" />

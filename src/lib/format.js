@@ -12,12 +12,32 @@ export function discountPct(p) {
   return Math.round(((compareAt - price) / compareAt) * 100);
 }
 
-/** Unit price for a given quantity, walking down the bulk tiers. */
-export function unitPriceFor(product, qty) {
+/**
+ * Fold the chosen option values into a base price, option by option:
+ * `price = (price + priceDelta) × priceMultiplier`. Mirrors the backend
+ * pricing service so the cart preview matches the checkout total. An option
+ * with no pricing set leaves the price untouched (delta 0 / multiplier 1).
+ */
+export function applyOptionPricing(base, options = []) {
+  let price = Number(base) || 0;
+  for (const o of options || []) {
+    const delta = Number(o?.priceDelta) || 0;
+    const m = Number(o?.priceMultiplier);
+    price = (price + delta) * (Number.isFinite(m) && m > 0 ? m : 1);
+  }
+  return price;
+}
+
+/**
+ * Unit price for a given quantity: walk down the bulk tiers, then apply the
+ * selected options' pricing on top.
+ */
+export function unitPriceFor(product, qty, options = []) {
   const tier = [...(product?.bulkTiers || [])]
     .sort((a, b) => b.minQty - a.minQty)
     .find((t) => qty >= t.minQty);
-  return tier ? tier.price : product?.price || 0;
+  const base = tier ? tier.price : product?.price || 0;
+  return Math.max(0, Math.round(applyOptionPricing(base, options)));
 }
 
 /** A small named palette so colour-typed options can still render a swatch. */

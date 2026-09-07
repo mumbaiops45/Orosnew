@@ -5,11 +5,11 @@ import {
   Printer,
   Cube,
   Tag,
-  ArrowUpRight,
   EnvelopeSimple,
   MapPin,
 } from "@phosphor-icons/react/ssr";
 import { fetchCategories, fetchProducts } from "@/lib/catalog";
+import FooterCategories from "@/components/FooterCategories";
 
 export const dynamic = "force-dynamic";
 
@@ -77,24 +77,6 @@ export default async function Footer() {
               moulds, and nothing sitting in a warehouse waiting for you — every
               object on this site is printed after you order it.
             </p>
-
-            <dl className="mt-6 space-y-2.5 text-sm">
-              <div className="flex items-center gap-2.5">
-                <MapPin size={15} className="shrink-0 text-white/35" />
-                <dd className="text-white/70">Bengaluru, Karnataka</dd>
-              </div>
-              <div className="flex items-center gap-2.5">
-                <EnvelopeSimple size={15} className="shrink-0 text-white/35" />
-                <dd>
-                  <a
-                    href="mailto:hello@oros.in"
-                    className="text-white/70 transition-colors hover:text-neon-2"
-                  >
-                    hello@oros.in
-                  </a>
-                </dd>
-              </div>
-            </dl>
           </div>
 
           {/* ── Shop: every link here resolves to a real page ── */}
@@ -102,53 +84,38 @@ export default async function Footer() {
             <h3 className="mb-4 text-[11px] font-bold uppercase tracking-[0.16em] text-white/35">
               Shop
             </h3>
-            <ul className="space-y-2.5">
-              <li>
-                <Link
-                  href="/shop"
-                  className="text-sm font-semibold text-white/80 transition-colors hover:text-neon-2"
-                >
-                  All {productCount} products
-                </Link>
-              </li>
-              {categories.map((c) => (
-                <li key={c.slug}>
-                  <Link
-                    href={`/shop?category=${c.slug}`}
-                    className="group flex items-baseline gap-2 text-sm text-white/60 transition-colors hover:text-white"
-                  >
-                    {c.name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            <FooterCategories
+              categories={categories}
+              productCount={productCount}
+            />
           </nav>
 
-          {/* ── Wholesale ── */}
+          {/* ── Address ── */}
           <div>
             <h3 className="mb-4 text-[11px] font-bold uppercase tracking-[0.16em] text-white/35">
-              Wholesale
+              Visit the studio
             </h3>
-            <Link
-              href="/bulk"
-              className="group block rounded-2xl border border-gold/40 bg-gold/8 p-5 transition-colors hover:bg-gold/15"
-            >
-              <p className="font-display text-lg font-extrabold text-gold">
-                Price a production run
-              </p>
-              <p className="mt-1.5 text-sm leading-relaxed text-white/60">
-                Per-unit rates at every tier, machine hours and a realistic lead
-                time — worked out on the live catalogue.
-              </p>
-              <span className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-gold">
-                Open the calculator
-                <ArrowUpRight
-                  size={13}
-                  weight="bold"
-                  className="transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-                />
-              </span>
-            </Link>
+            <address className="space-y-3 text-sm not-italic">
+              <div className="flex gap-2.5">
+                <MapPin size={15} className="mt-0.5 shrink-0 text-white/35" />
+                <span className="text-white/70">
+                  OROS Additive Pvt Ltd
+                  <br />
+                  Bengaluru, Karnataka
+                  <br />
+                  India
+                </span>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <EnvelopeSimple size={15} className="shrink-0 text-white/35" />
+                <a
+                  href="mailto:hello@oros.in"
+                  className="text-white/70 transition-colors hover:text-neon-2"
+                >
+                  hello@oros.in
+                </a>
+              </div>
+            </address>
           </div>
         </div>
 

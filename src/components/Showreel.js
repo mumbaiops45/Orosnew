@@ -63,11 +63,17 @@ export default function Showreel({ banners = [] }) {
                   )}
 
                   <TwoToneHeading
-                    text={b.title}
+                    title1={b.title1}
+                    title2={b.title2}
+                    title1Color={b.title1Color}
+                    title2Color={b.title2Color}
                     className="max-w-xl font-display text-[clamp(2rem,4.8vw,3.5rem)] font-extrabold leading-[1.02] tracking-[-0.03em]"
                   />
                   {b.subTitle && (
-                    <p className={`mt-4 max-w-lg text-sm leading-relaxed sm:text-base ${t.sub}`}>
+                    <p
+                      style={b.subTitleColor ? { color: b.subTitleColor } : undefined}
+                      className={`mt-4 max-w-lg text-sm leading-relaxed sm:text-base ${t.sub}`}
+                    >
                       {b.subTitle}
                     </p>
                   )}
@@ -75,7 +81,15 @@ export default function Showreel({ banners = [] }) {
                   {b.ctaLabel && b.ctaUrl && (
                     <Link
                       href={b.ctaUrl}
-                      className={`mt-8 inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-sm font-extrabold transition-all duration-300 hover:-translate-y-0.5 ${t.cta}`}
+                      style={{
+                        "--cta-bg": b.title1Color || undefined,
+                        "--cta-bg-hover": b.title2Color || undefined,
+                      }}
+                      className={`mt-8 inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-sm font-extrabold transition-all duration-300 hover:-translate-y-0.5 ${
+                        b.title1Color
+                          ? "bg-[var(--cta-bg)] text-white hover:bg-[var(--cta-bg-hover)]"
+                          : t.cta
+                      }`}
                     >
                       {b.ctaLabel}
                       <CaretRight size={15} weight="bold" />

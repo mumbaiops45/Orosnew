@@ -14,3 +14,7 @@ export const removeCartItem = (id) => api.delete(`/cart/${id}`);
 
 /** DELETE /cart/clear */
 export const clearCart = () => api.delete("/cart/clear");
+
+// ── admin ──
+/** GET /cart/admin -> { carts: [...] } — every customer's live cart, grouped by user */
+export const getAllCarts = () => api.get("/cart/admin");

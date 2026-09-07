@@ -4,11 +4,15 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import * as cartApi from "@/api/cart.api";
 import { tokenStore } from "@/lib/axios";
-import { unitPriceFor } from "@/lib/format";
+import { unitPriceFor, applyOptionPricing } from "@/lib/format";
 
+// dedup key is name/value only — the option's pricing fields ride along on
+// the line but must not change which line an add lands on
 const variantKeyFor = (options = []) =>
   JSON.stringify(
-    [...options].sort((a, b) => a.name.localeCompare(b.name))
+    [...options]
+      .map((o) => ({ name: o.name, value: o.value }))
+      .sort((a, b) => a.name.localeCompare(b.name))
   );
 
 const lineKeyFor = (productId, options) =>
@@ -329,8 +333,16 @@ export function useCart() {
   const detailed = lines.map((l) => {
     const snap = l.snapshot || {};
     const product = { ...snap, id: l.productId, _id: l.productId, slug: l.slug };
-    const unit = unitPriceFor(product, l.qty);
-    const listUnit = snap.compareAt || snap.price || unit;
+    // option pricing (priceDelta / priceMultiplier) rides on l.options and
+    // is baked into every unit figure here
+    const withOptions = (base) =>
+      Math.max(0, Math.round(applyOptionPricing(base, l.options)));
+
+    const unit = unitPriceFor(product, l.qty, l.options);
+    const adjustedBase = withOptions(snap.price);
+    const listUnit = snap.compareAt
+      ? withOptions(snap.compareAt)
+      : adjustedBase || unit;
     const tiers = [...(snap.bulkTiers || [])].sort(
       (a, b) => a.minQty - b.minQty
     );
@@ -347,7 +359,7 @@ export function useCart() {
       nextTier,
       lineTotal: unit * l.qty,
       lineSaving: Math.max(0, (listUnit - unit) * l.qty),
-      tiered: unit < (snap.price || unit),
+      tiered: unit < (adjustedBase || unit),
     };
   });
 

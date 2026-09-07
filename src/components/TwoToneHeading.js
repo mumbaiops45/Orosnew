@@ -1,18 +1,30 @@
-import { splitLastWord } from "@/lib/highlight";
-
-/** Lilac lead, flame last word — the shared title treatment for banner/showreel copy. */
+/**
+ * The shared banner / showreel title treatment: two admin-authored parts,
+ * `title1` then `title2`, each rendered in its own admin-picked colour.
+ */
 export default function TwoToneHeading({
-  text,
+  title1,
+  title2,
+  title1Color,
+  title2Color,
   as: As = "h2",
   className = "",
   ...props
 }) {
-  if (!text) return null;
-  const { lead, tail } = splitLastWord(text);
+  if (!title1 && !title2) return null;
   return (
     <As className={className} {...props}>
-      {lead && <span className="text-ink">{lead} </span>}
-      <span className="text-flame">{tail}</span>
+      {title1 && (
+        <span style={title1Color ? { color: title1Color } : undefined}>
+          {title1}
+        </span>
+      )}
+      {title1 && title2 ? " " : null}
+      {title2 && (
+        <span style={title2Color ? { color: title2Color } : undefined}>
+          {title2}
+        </span>
+      )}
     </As>
   );
 }

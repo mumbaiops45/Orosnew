@@ -178,12 +178,21 @@ export function normalizeSubcategoryList(list) {
 
 export function normalizeBanner(raw) {
   if (!raw) return null;
+  // Title is two admin-authored parts, each with its own colour: `title1`
+  // renders first, `title2` after it. Older docs only had a single `title`.
+  const title1 = raw.title1 || raw.title || "";
+  const title2 = raw.title2 || "";
   return {
     id: raw._id || raw.id,
     type: raw.type,
     kicker: raw.kicker || "",
-    title: raw.title || "",
+    title1,
+    title1Color: raw.title1Color || "#2b1b4d",
+    title2,
+    title2Color: raw.title2Color || "#ff5a2c",
+    title: [title1, title2].filter(Boolean).join(" "), // plain text, for alt/aria
     subTitle: raw.subTitle || "",
+    subTitleColor: raw.subTitleColor || "",
     imageDesktop: raw.mediaUrlDesktop || PLACEHOLDER_IMAGE,
     imageMobile: raw.mediaUrlMobile || raw.mediaUrlDesktop || PLACEHOLDER_IMAGE,
     ctaLabel: raw.ctaLabel || "",
