@@ -193,6 +193,73 @@ function Pager({ page, setPage, totalPages, hasNext }) {
 
 const isoDay = (d) => new Date(d).toISOString().slice(0, 10);
 
+// seconds → "45s" / "3m 20s" / "1h 12m"
+const fmtDuration = (s) => {
+  const t = Math.max(0, Math.round(Number(s) || 0));
+  if (t < 60) return `${t}s`;
+  const m = Math.floor(t / 60);
+  if (m < 60) return t % 60 ? `${m}m ${t % 60}s` : `${m}m`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+};
+
+// Time visitors spend on each product page — its own endpoint, all-time,
+// not tied to the dashboard date range.
+function ProductTimeTable({ rows, offset = 0 }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-line bg-shell">
+      <table className="w-full min-w-[640px] text-sm">
+        <thead>
+          <tr className="border-b border-line text-left">
+            {["#", "Product", "SKU", "Total time", "Views", "Avg / view"].map(
+              (h) => (
+                <th
+                  key={h}
+                  className="px-4 py-3 text-xs font-bold uppercase tracking-wide text-ink-4"
+                >
+                  {h}
+                </th>
+              )
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr
+              key={r.productId || i}
+              className="border-b border-line last:border-0"
+            >
+              <td className="px-4 py-2.5 text-ink-3">{offset + i + 1}</td>
+              <td className="px-4 py-2.5">
+                <div className="flex items-center gap-3">
+                  {r.productImage ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={r.productImage}
+                      alt=""
+                      className="h-10 w-10 shrink-0 rounded-md object-cover"
+                    />
+                  ) : (
+                    <div className="h-10 w-10 shrink-0 rounded-md bg-canvas" />
+                  )}
+                  <span className="font-semibold">
+                    {r.productName || r.productId}
+                  </span>
+                </div>
+              </td>
+              <td className="px-4 py-2.5 text-ink-3">{r.sku || "—"}</td>
+              <td className="px-4 py-2.5 font-bold">
+                {fmtDuration(r.totalDuration)}
+              </td>
+              <td className="px-4 py-2.5">{r.totalviews ?? 0}</td>
+              <td className="px-4 py-2.5">{fmtDuration(r.averageDuration)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function Overview() {
   const [from, setFrom] = useState(isoDay(Date.now() - 29 * 864e5));
   const [to, setTo] = useState(isoDay(Date.now()));
@@ -202,6 +269,24 @@ export function Overview() {
   const { data, loading, error } = useAsync(
     () => analyticsApi.getDashboard({ from, to, groupBy }),
     [from, to, groupBy]
+  );
+
+  // dwell-time analytics — separate endpoint, all-time roll-up, paginated
+  const TIME_LIMIT = 10;
+  const [timePage, setTimePage] = useState(1);
+  const timeAnalytics = useAsync(
+    () => analyticsApi.getProductTimeAnalytics({ page: timePage, limit: TIME_LIMIT }),
+    [timePage]
+  );
+  const timeRows = timeAnalytics.data?.analytics || [];
+  // roll-up over the rows currently shown (this page), not the whole catalogue —
+  // the endpoint returns one paginated slice with no grand total
+  const timeTotals = timeRows.reduce(
+    (a, r) => ({
+      duration: a.duration + (r.totalDuration || 0),
+      views: a.views + (r.totalviews || 0),
+    }),
+    { duration: 0, views: 0 }
   );
 
   const ov = data?.overview || {};
@@ -229,6 +314,51 @@ export function Overview() {
       </div>
 
       <Msg error={error} />
+
+      {/* ── 0. PRODUCT ENGAGEMENT — top priority, own endpoint ── */}
+      <DashSection title="Product engagement · time on page">
+        {timeAnalytics.error ? (
+          <Msg error={timeAnalytics.error} />
+        ) : timeAnalytics.loading ? (
+          <p className="text-sm text-ink-3">Loading engagement…</p>
+        ) : timeRows.length === 0 && timePage === 1 ? (
+          <p className="text-sm text-ink-3">No product views tracked yet.</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Kpi
+                label="Time on top products"
+                value={fmtDuration(timeTotals.duration)}
+              />
+              <Kpi label="Views on top products" value={timeTotals.views} />
+              <Kpi
+                label="Avg time / view"
+                value={fmtDuration(
+                  timeTotals.views
+                    ? timeTotals.duration / timeTotals.views
+                    : 0
+                )}
+              />
+              <Kpi
+                label="Rank shown"
+                value={`${(timePage - 1) * TIME_LIMIT + 1}–${
+                  (timePage - 1) * TIME_LIMIT + timeRows.length
+                }`}
+              />
+            </div>
+            <ProductTimeTable
+              rows={timeRows}
+              offset={(timePage - 1) * TIME_LIMIT}
+            />
+            <Pager
+              page={timePage}
+              setPage={setTimePage}
+              hasNext={timeRows.length === TIME_LIMIT}
+            />
+          </>
+        )}
+      </DashSection>
+
       {loading ? (
         <p className="text-sm text-ink-3">Loading analytics…</p>
       ) : (

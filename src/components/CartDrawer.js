@@ -14,6 +14,7 @@ import {
 } from "@phosphor-icons/react";
 import { gsap, useGSAP, prefersReducedMotion } from "@/lib/gsap";
 import ProductImage from "@/components/ProductImage";
+import ProductCard from "@/components/ProductCard";
 import { useCart } from "@/store/cartStore";
 import { formatINR } from "@/lib/format";
 import { fetchSuggested } from "@/lib/catalog";
@@ -29,7 +30,6 @@ export default function CartDrawer() {
     justAddedKey,
     setQty,
     remove,
-    add,
   } = useCart();
 
   const root = useRef(null);
@@ -288,38 +288,12 @@ export default function CartDrawer() {
                   </h3>
                   <div className="grid grid-cols-2 gap-3">
                     {recommended.map((p) => (
-                      <div
+                      <ProductCard
                         key={p.slug}
-                        className="group rounded-lg border border-line p-2.5"
-                      >
-                        <Link
-                          href={`/shop/${p.slug}`}
-                          onClick={closeDrawer}
-                          className="block"
-                        >
-                          <span className="relative block aspect-square overflow-hidden rounded-md bg-canvas">
-                            <ProductImage
-                              src={p.image}
-                              alt={p.name}
-                              sizes="160px"
-                              overlay
-                              imgClassName="transition-transform duration-500 group-hover:scale-105"
-                            />
-                          </span>
-                          <p className="mt-2 line-clamp-1 text-xs font-bold text-ink group-hover:text-flame">
-                            {p.name}
-                          </p>
-                          <p className="font-display text-sm font-extrabold text-ink">
-                            {formatINR(p.price)}
-                          </p>
-                        </Link>
-                        <button
-                          onClick={() => add(p, { qty: p.minQty || 1 })}
-                          className="mt-2 w-full rounded bg-gold py-1.5 text-[11px] font-extrabold uppercase tracking-wide text-ink transition-colors hover:bg-gold-dk"
-                        >
-                          + Add
-                        </button>
-                      </div>
+                        product={p}
+                        onNavigate={closeDrawer}
+                        className="p-2.5"
+                      />
                     ))}
                   </div>
                 </section>

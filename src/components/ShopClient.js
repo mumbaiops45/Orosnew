@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { CaretDown, CaretRight, X, Check } from "@phosphor-icons/react";
+import { CaretDown, CaretLeft, CaretRight, X, Check } from "@phosphor-icons/react";
 import ProductCard from "@/components/ProductCard";
 import PriceRange from "@/components/PriceRange";
 import { formatINR } from "@/lib/format";
@@ -211,7 +211,7 @@ export default function ShopClient() {
       </div>
 
       {/* ══ Category pills ══ */}
-      <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 py-5 lg:mx-0 lg:px-0">
+      <ChipScroller className="py-5" label="categories">
         <Pill
           active={!categorySlug}
           onClick={() => setQuery({ category: "", subcategory: "" })}
@@ -232,11 +232,11 @@ export default function ShopClient() {
             {c.name}
           </Pill>
         ))}
-      </div>
+      </ChipScroller>
 
       {/* ══ Subcategory pills (only under an active category) ══ */}
       {activeCategory && subcategories.length > 0 && (
-        <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-4 lg:mx-0 lg:px-0">
+        <ChipScroller className="pb-4" label={`${activeCategory.name} subcategories`}>
           <Pill
             small
             active={!subcategorySlug}
@@ -258,7 +258,7 @@ export default function ShopClient() {
               {s.name}
             </Pill>
           ))}
-        </div>
+        </ChipScroller>
       )}
 
       {/* ══ Filter bar ══ */}
@@ -400,6 +400,84 @@ export default function ShopClient() {
             <ProductCard key={p.slug || p.id} product={p} />
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Horizontally scrollable chip row with edge fades and left/right nudge
+ * buttons that only show while there's more content off-screen in that
+ * direction. Recomputes on scroll, on resize, and after every render
+ * (so it reacts to chips loading in asynchronously).
+ */
+function ChipScroller({ children, className = "", label = "items" }) {
+  const ref = useRef(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+
+  const update = () => {
+    const el = ref.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    const left = scrollLeft > 4;
+    const right = scrollLeft + clientWidth < scrollWidth - 4;
+    setEdges((p) => (p.left === left && p.right === right ? p : { left, right }));
+  };
+
+  useEffect(() => {
+    update();
+    const el = ref.current;
+    if (!el) return;
+    el.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      el.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // keep the arrows honest as chips mount / unmount
+  useEffect(update);
+
+  const nudge = (dir) => {
+    const el = ref.current;
+    if (el) el.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: "smooth" });
+  };
+
+  return (
+    <div className="relative -mx-4 lg:mx-0">
+      {edges.left && (
+        <>
+          <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-14 bg-gradient-to-r from-canvas to-transparent" />
+          <button
+            type="button"
+            aria-label={`Scroll ${label} left`}
+            onClick={() => nudge(-1)}
+            className="absolute left-1 top-1/2 z-20 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full border border-line bg-shell text-ink shadow-[0_6px_16px_-6px_rgba(43,27,77,0.5)] transition-colors hover:border-ink-5"
+          >
+            <CaretLeft size={14} weight="bold" />
+          </button>
+        </>
+      )}
+      <div
+        ref={ref}
+        className={`no-scrollbar flex gap-2 overflow-x-auto px-4 lg:px-0 ${className}`}
+      >
+        {children}
+      </div>
+      {edges.right && (
+        <>
+          <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-14 bg-gradient-to-l from-canvas to-transparent" />
+          <button
+            type="button"
+            aria-label={`Scroll ${label} right`}
+            onClick={() => nudge(1)}
+            className="absolute right-1 top-1/2 z-20 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full border border-line bg-shell text-ink shadow-[0_6px_16px_-6px_rgba(43,27,77,0.5)] transition-colors hover:border-ink-5"
+          >
+            <CaretRight size={14} weight="bold" />
+          </button>
+        </>
       )}
     </div>
   );

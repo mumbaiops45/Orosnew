@@ -19,3 +19,14 @@ export const getQuotationAnalytics = (params = {}) =>
   api.get("/analytics/quotations", { params });
 export const getNonMovingProducts = (params = {}) =>
   api.get("/analytics/non-moving-products", { params });
+
+/**
+ * GET /analytics/product-time-analytics — time visitors spend on each PDP,
+ * sorted by total time desc. Rows:
+ * { productId, productImage, productName, sku, totalDuration, totalviews, averageDuration }
+ * (seconds). Not date-filtered — it's an all-time roll-up.
+ * Paginated: params { page = 1, limit = 10 }. Response carries no grand
+ * total, so page with `hasNext = rows.length === limit`.
+ */
+export const getProductTimeAnalytics = (params = {}) =>
+  api.get("/analytics/product-time-analytics", { params });

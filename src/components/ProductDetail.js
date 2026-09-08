@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   CaretRight,
   Minus,
+  Play,
   Plus,
   ShoppingCart,
   Lightning,
@@ -18,6 +19,7 @@ import {
 } from "@phosphor-icons/react";
 import { gsap, useGSAP, prefersReducedMotion } from "@/lib/gsap";
 import ProductImage from "@/components/ProductImage";
+import { trackProductView } from "@/api/view.api";
 import { useCartStore } from "@/store/cartStore";
 import { useAuthStore, useUser } from "@/store/authStore";
 import { formatINR, colorHex, unitPriceFor } from "@/lib/format";
@@ -37,12 +39,55 @@ export default function ProductDetail({ product: p }) {
   const [selected, setSelected] = useState({});
 
   const [qty, setQty] = useState(p.minQty || 1);
-  const [activeImage, setActiveImage] = useState(0);
+  const [activeSlide, setActiveSlide] = useState(0);
   const [added, setAdded] = useState(false);
   const [optError, setOptError] = useState("");
   const art = useRef(null);
 
-  const images = p.images?.length ? p.images : [p.image];
+  // gallery = every product image, then every product video. A video slide
+  // plays inline; its thumbnail is the poster frame with a play badge.
+  const slides = useMemo(() => {
+    const imgs = (p.images?.length ? p.images : [p.image]).map((url) => ({
+      kind: "image",
+      url,
+    }));
+    const vids = (p.videos || []).map((v) => ({
+      kind: "video",
+      url: v.url,
+      poster: v.poster || "",
+      alt: v.alt || "",
+    }));
+    return [...imgs, ...vids];
+  }, [p.images, p.image, p.videos]);
+
+  const active = slides[activeSlide] || slides[0];
+
+  // ── Track dwell time on this PDP ──
+  // Clock starts on mount; the elapsed seconds are reported once, on
+  // route-change (effect cleanup) or when the tab/window goes away
+  // (pagehide). The `reported` guard keeps those two paths from
+  // double-counting the same visit.
+  useEffect(() => {
+    const productId = p.id || p._id;
+    if (!productId) return;
+
+    const startedAt = Date.now();
+    let reported = false;
+    const report = () => {
+      if (reported) return;
+      reported = true;
+      trackProductView({
+        productId,
+        duration: (Date.now() - startedAt) / 1000,
+      });
+    };
+
+    window.addEventListener("pagehide", report);
+    return () => {
+      window.removeEventListener("pagehide", report);
+      report();
+    };
+  }, [p.id, p._id]);
 
   // the option-value objects the customer has actually picked — these carry
   // priceDelta / priceMultiplier and drive both the displayed price and the
@@ -172,20 +217,38 @@ export default function ProductDetail({ product: p }) {
         <div className="lg:sticky lg:top-[99px] lg:pl-8">
           <div className="flex gap-3 px-5 py-8 lg:px-0">
             {/* thumbnails, left of the main image */}
-            {images.length > 1 && (
+            {slides.length > 1 && (
               <div className="flex flex-col gap-2">
-                {images.map((src, i) => (
+                {slides.map((s, i) => (
                   <button
                     key={i}
-                    onClick={() => setActiveImage(i)}
-                    aria-label={`View image ${i + 1}`}
+                    onClick={() => setActiveSlide(i)}
+                    aria-label={
+                      s.kind === "video"
+                        ? `Play video ${i + 1}`
+                        : `View image ${i + 1}`
+                    }
                     className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 bg-canvas transition-colors ${
-                      i === activeImage
+                      i === activeSlide
                         ? "border-flame"
                         : "border-line hover:border-ink-5"
                     }`}
                   >
-                    <ProductImage src={src} alt="" sizes="64px" overlay />
+                    <ProductImage
+                      src={s.kind === "video" ? s.poster || p.image : s.url}
+                      alt=""
+                      sizes="64px"
+                      overlay
+                    />
+                    {s.kind === "video" && (
+                      <span className="absolute inset-0 grid place-items-center bg-black/25">
+                        <Play
+                          size={16}
+                          weight="fill"
+                          className="text-white drop-shadow"
+                        />
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -196,14 +259,30 @@ export default function ProductDetail({ product: p }) {
                 ref={art}
                 className="relative aspect-square w-full overflow-hidden rounded-3xl bg-canvas"
               >
-                <ProductImage
-                  src={images[activeImage] || p.image}
-                  alt={p.name}
-                  sizes="(max-width: 1024px) 100vw, 45vw"
-                  priority
-                  overlay
-                />
-                <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-2">
+                {active?.kind === "video" ? (
+                  <video
+                    key={active.url}
+                    src={active.url}
+                    poster={active.poster || undefined}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    aria-label={active.alt || `${p.name} video`}
+                    className="absolute inset-0 h-full w-full bg-black object-contain"
+                  />
+                ) : (
+                  <ProductImage
+                    src={active?.url || p.image}
+                    alt={p.name}
+                    sizes="(max-width: 1024px) 100vw, 45vw"
+                    priority
+                    overlay
+                  />
+                )}
+                <div
+                  className="pointer-events-none absolute left-4 top-4 flex flex-col gap-2"
+                  hidden={active?.kind === "video"}
+                >
                   {off > 0 && (
                     <span className="rounded-full bg-leaf px-3 py-1.5 text-xs font-extrabold text-white">
                       {off}% off
@@ -215,7 +294,10 @@ export default function ProductDetail({ product: p }) {
                     </span>
                   )}
                 </div>
-                <span className="pointer-events-none absolute bottom-4 right-4 flex items-center gap-1.5 rounded-full bg-white/85 px-3 py-1.5 text-[11px] font-bold text-ink backdrop-blur-sm">
+                <span
+                  className="pointer-events-none absolute bottom-4 right-4 flex items-center gap-1.5 rounded-full bg-white/85 px-3 py-1.5 text-[11px] font-bold text-ink backdrop-blur-sm"
+                  hidden={active?.kind === "video"}
+                >
                   <Cube size={13} weight="bold" />
                   Printed to order
                 </span>

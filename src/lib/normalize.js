@@ -36,6 +36,18 @@ function pickGallery(raw) {
   return [one];
 }
 
+/** media[] -> the product videos, in sort order, with a poster frame */
+function pickVideos(raw) {
+  const media = Array.isArray(raw.media) ? raw.media : [];
+  return media
+    .filter((m) => m.type === "VIDEO" && m.url)
+    .map((m) => ({
+      url: m.url,
+      poster: m.posterUrl || "",
+      alt: m.altText || "",
+    }));
+}
+
 /** priceSlabs[] -> the { minQty, price } tiers the PDP + cart walk */
 function toBulkTiers(priceSlabs) {
   if (!Array.isArray(priceSlabs)) return [];
@@ -117,10 +129,15 @@ export function normalizeProduct(raw, extra = {}) {
 
     image: pickImage(source),
     images: pickGallery(source),
+    videos: pickVideos(source),
 
     bulkTiers: toBulkTiers(priceSlabs),
     options: normOptions,
     specs: toSpecs(specs),
+
+    // list payloads now ship options too, so the grid card can offer the
+    // variant picker inline before "add to cart"
+    hasOptions: normOptions.length > 0,
 
     // derived, best-effort — never assumed present by the UI
     colors: colourOption ? colourOption.values.map((v) => v.value) : [],

@@ -124,22 +124,22 @@ export default async function Footer() {
           <p className="text-xs text-white/40">
             © {new Date().getFullYear()} OROS Additive Pvt Ltd
           </p>
-
+          <span className="flex items-center gap-2">
+            {["UPI", "Visa", "Mastercard", "RuPay"].map((m) => (
+              <span
+                key={m}
+                className="rounded border border-white/15 px-2 py-1 text-[10px] font-bold text-white/55"
+              >
+                {m}
+              </span>
+            ))}
+          </span>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-white/40">
-            <span>Printed to order</span>
+            {/* <span>Printed to order</span>
             <span className="hidden h-3 w-px bg-white/15 sm:block" />
             <span>14-day returns</span>
-            <span className="hidden h-3 w-px bg-white/15 sm:block" />
-            <span className="flex items-center gap-2">
-              {["UPI", "Visa", "Mastercard", "RuPay"].map((m) => (
-                <span
-                  key={m}
-                  className="rounded border border-white/15 px-2 py-1 text-[10px] font-bold text-white/55"
-                >
-                  {m}
-                </span>
-              ))}
-            </span>
+            <span className="hidden h-3 w-px bg-white/15 sm:block" /> */}
+
             <span className="hidden h-3 w-px bg-white/15 sm:block" />
             <span>
               Designed by{" "}
