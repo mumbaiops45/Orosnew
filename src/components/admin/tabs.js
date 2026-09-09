@@ -14,6 +14,7 @@ import * as bannerApi from "@/api/banner.api";
 import * as quotationApi from "@/api/quotation.api";
 import * as cartApi from "@/api/cart.api";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { useFocusRow } from "@/lib/focusRow";
 
 /* ══════════ shared primitives ══════════ */
 
@@ -711,7 +712,7 @@ function SourceBadge({ order }) {
   );
 }
 
-// admin-settable statuses for a STORE order (mirrors order.service.js)
+// admin-settable statuses for any order (mirrors order.service.js)
 const ORDER_STATUSES = [
   "PENDING_PAYMENT",
   "PAID",
@@ -726,10 +727,10 @@ function OrderStatusControl({ order, onChanged }) {
   const [status, setStatus] = useState(order.status);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // the backend lets an admin move any order (STORE, QUOTATION or MANUAL);
+  // a finished or cancelled order is the only thing it won't reopen
   const locked =
-    order.source !== "STORE" ||
-    order.status === "COMPLETED" ||
-    order.status === "CANCELLED";
+    order.status === "COMPLETED" || order.status === "CANCELLED";
 
   const change = async (next) => {
     if (next === status) return;
@@ -781,14 +782,26 @@ function OrderList({ filterId, page, setPage }) {
   const f = ORDER_TABS.find((t) => t.id === filterId) || ORDER_TABS[0];
   const rows = orders.filter(f.test);
 
+  // a notification deep-link (?focus=<orderId>) — expand that row
+  useFocusRow(
+    orders.map((o) => o._id),
+    (id) => setOpen(id)
+  );
+
   if (loading) return <p className="text-sm text-ink-3">Loading orders…</p>;
   return (
     <>
       <Msg error={error} />
-      <Table head={["Order", "Source", "Customer", "Items", "Total", "Status", ""]}>
+      <Table
+        head={["Order", "Source", "Customer", "Items", "Total", "Order status", ""]}
+      >
         {rows.map((o) => (
           <>
-            <tr key={o._id} className="border-b border-line last:border-0">
+            <tr
+              key={o._id}
+              data-focus-id={o._id}
+              className="border-b border-line last:border-0"
+            >
               <td className="px-4 py-3 font-bold">
                 <span className="block font-mono text-xs tracking-tight">
                   #{String(o._id).toUpperCase()}
@@ -3728,6 +3741,15 @@ export function Quotations() {
   const rows = data?.quotation || [];
   const [open, setOpen] = useState(null);
 
+  // a notification deep-link (?focus=<quotationId>) — open that quote's manager
+  useFocusRow(
+    rows.map((q) => q._id),
+    (id) => {
+      const hit = rows.find((q) => String(q._id) === String(id));
+      if (hit) setOpen(hit);
+    }
+  );
+
   return (
     <div className="space-y-4">
       <Msg error={error} />
@@ -3738,7 +3760,11 @@ export function Quotations() {
           head={["Ref", "Customer", "Type", "Items", "Files", "Total", "Status", ""]}
         >
           {rows.map((q) => (
-            <tr key={q._id} className="border-b border-line last:border-0">
+            <tr
+              key={q._id}
+              data-focus-id={q._id}
+              className="border-b border-line last:border-0"
+            >
               <td className="px-4 py-3 font-bold">
                 {q.refNumber}
                 <span className="block text-xs font-normal text-ink-3">
@@ -3878,6 +3904,66 @@ function QuotationModal({ quotation, onClose, onSaved }) {
   const setLine = (i, k, v) =>
     setLines((s) => s.map((l, j) => (j === i ? { ...l, [k]: v } : l)));
 
+  // Address the customer sent with the request. The desk can rewrite it
+  // here on the customer's ask — it goes back through the same admin
+  // route as a lone `shippingAddress`, so it doesn't touch pricing or
+  // bump the quote version.
+  const sa = quotation.shippingAddress || {};
+  const [addrOpen, setAddrOpen] = useState(false);
+  const [addr, setAddr] = useState({
+    name: sa.name || "",
+    phone: sa.phone || "",
+    addressLine1: sa.addressLine1 || "",
+    addressLine2: sa.addressLine2 || "",
+    city: sa.city || "",
+    state: sa.state || "",
+    country: sa.country || "",
+    pincode: sa.pincode || "",
+  });
+  const [addrErr, setAddrErr] = useState("");
+  const [addrSaving, setAddrSaving] = useState(false);
+  const setAddr_ = (k) => (v) => setAddr((s) => ({ ...s, [k]: v }));
+
+  const formattedAddress = [
+    sa.addressLine1,
+    sa.addressLine2,
+    sa.city,
+    sa.state,
+    sa.pincode,
+    sa.country,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  const saveAddr = async () => {
+    setAddrErr("");
+    const need = [
+      "name",
+      "phone",
+      "addressLine1",
+      "city",
+      "state",
+      "country",
+      "pincode",
+    ];
+    if (need.some((k) => !String(addr[k] || "").trim())) {
+      return setAddrErr(
+        "Name, phone, address line 1, city, state, country and pincode are all required"
+      );
+    }
+    setAddrSaving(true);
+    try {
+      await quotationApi.updateQuotationByAdmin(quotation._id, {
+        shippingAddress: addr,
+      });
+      onSaved();
+    } catch (e) {
+      setAddrErr(e.message);
+    } finally {
+      setAddrSaving(false);
+    }
+  };
+
   const computedSubtotal = lines.reduce(
     (n, l) => n + Number(l.unitPrice || 0) * Number(l.qty || 0),
     0
@@ -3967,26 +4053,92 @@ function QuotationModal({ quotation, onClose, onSaved }) {
               </>
             )}
 
-            {quotation.shippingAddress?.city && (
-              <>
-                <dt className="font-bold uppercase tracking-wide text-ink-4">
-                  Ship to
-                </dt>
-                <dd className="text-ink-2">
-                  {[
-                    quotation.shippingAddress.addressLine1,
-                    quotation.shippingAddress.addressLine2,
-                    quotation.shippingAddress.city,
-                    quotation.shippingAddress.state,
-                    quotation.shippingAddress.pincode,
-                    quotation.shippingAddress.country,
-                  ]
-                    .filter(Boolean)
-                    .join(", ")}
-                </dd>
-              </>
-            )}
           </dl>
+
+          {/* ── shipping address, editable on the customer's request ── */}
+          <div className="mt-2 border-t border-line pt-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-bold uppercase tracking-wide text-ink-4">
+                Ship to
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setAddrErr("");
+                  setAddrOpen((v) => !v);
+                }}
+                className="rounded border border-flame px-2 py-0.5 text-[11px] font-bold text-flame transition-colors hover:bg-flame-lt"
+              >
+                {addrOpen ? "Cancel" : "Update address"}
+              </button>
+            </div>
+
+            {!addrOpen && (
+              <p className="mt-1 text-ink-2">
+                {[sa.name, sa.phone].filter(Boolean).join(" · ")}
+                {(sa.name || sa.phone) && formattedAddress ? " — " : ""}
+                {formattedAddress || (!sa.name && !sa.phone ? "—" : "")}
+              </p>
+            )}
+
+            {addrOpen && (
+              <div className="mt-3 space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field
+                    label="Name"
+                    required
+                    value={addr.name}
+                    onChange={setAddr_("name")}
+                  />
+                  <Field
+                    label="Phone"
+                    required
+                    value={addr.phone}
+                    onChange={setAddr_("phone")}
+                  />
+                  <Field
+                    label="Address line 1"
+                    required
+                    value={addr.addressLine1}
+                    onChange={setAddr_("addressLine1")}
+                  />
+                  <Field
+                    label="Address line 2"
+                    value={addr.addressLine2}
+                    onChange={setAddr_("addressLine2")}
+                  />
+                  <Field
+                    label="City"
+                    required
+                    value={addr.city}
+                    onChange={setAddr_("city")}
+                  />
+                  <Field
+                    label="State"
+                    required
+                    value={addr.state}
+                    onChange={setAddr_("state")}
+                  />
+                  <Field
+                    label="Country"
+                    required
+                    value={addr.country}
+                    onChange={setAddr_("country")}
+                  />
+                  <Field
+                    label="Pincode"
+                    required
+                    value={addr.pincode}
+                    onChange={setAddr_("pincode")}
+                  />
+                </div>
+                <Msg error={addrErr} />
+                <Btn onClick={saveAddr} disabled={addrSaving}>
+                  {addrSaving ? "Saving…" : "Save address"}
+                </Btn>
+              </div>
+            )}
+          </div>
 
           {quotation.requirements && (
             <p className="mt-2 whitespace-pre-line border-t border-line pt-2 text-ink-2">

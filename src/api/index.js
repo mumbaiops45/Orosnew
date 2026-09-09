@@ -13,6 +13,7 @@ import * as quotation from "./quotation.api";
 import * as address from "./address.api";
 import * as shipping from "./shipping.api";
 import * as view from "./view.api";
+import * as notification from "./notification.api";
 
 export {
   auth,
@@ -30,4 +31,5 @@ export {
   address,
   shipping,
   view,
+  notification,
 };

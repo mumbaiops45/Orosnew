@@ -237,6 +237,34 @@ export default function QuotationThread({
         </p>
       )}
 
+      {/* ── delivery address the customer gave the desk ── */}
+      {(q.shippingAddress?.addressLine1 || q.shippingAddress?.city) && (
+        <div className="rounded-lg border border-line bg-shell px-3 py-2">
+          <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-ink-4">
+            Delivery address
+          </p>
+          {(q.shippingAddress.name || q.shippingAddress.phone) && (
+            <p className="text-xs font-semibold text-ink-2">
+              {[q.shippingAddress.name, q.shippingAddress.phone]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          )}
+          <p className="text-xs text-ink-2">
+            {[
+              q.shippingAddress.addressLine1,
+              q.shippingAddress.addressLine2,
+              q.shippingAddress.city,
+              q.shippingAddress.state,
+              q.shippingAddress.pincode,
+              q.shippingAddress.country,
+            ]
+              .filter(Boolean)
+              .join(", ")}
+          </p>
+        </div>
+      )}
+
       {(q.files || []).length > 0 && (
         <div className="flex flex-wrap gap-2">
           {q.files.map((f) => (

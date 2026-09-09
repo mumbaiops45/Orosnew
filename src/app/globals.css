@@ -134,6 +134,20 @@ html.lenis body {
   color: #fff;
 }
 
+/* A row a notification deep-linked to — briefly wash it gold so the eye
+   lands on it after the scroll. Works on <tr> and card <li> alike. */
+@keyframes focusFlash {
+  0% {
+    background-color: var(--color-gold-lt);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+.focus-flash {
+  animation: focusFlash 2.4s ease-out;
+}
+
 /* Native <button> defaults to cursor:default — every clickable control
    in the app should read as clickable. */
 button:not(:disabled),

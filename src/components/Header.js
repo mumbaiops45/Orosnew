@@ -15,6 +15,7 @@ import { useCart } from "@/store/cartStore";
 import { formatINR } from "@/lib/format";
 import { fetchCategories } from "@/lib/catalog";
 import ProfileMenu from "@/components/ProfileMenu";
+import NotificationBell from "@/components/NotificationBell";
 import SearchBox from "@/components/SearchBox";
 
 const HEX_CLIP =
@@ -152,6 +153,8 @@ export default function Header() {
             </Link>
 
             <span className="hidden h-9 w-px bg-white/12 lg:block" />
+
+            <NotificationBell />
 
             <button
               onClick={openDrawer}

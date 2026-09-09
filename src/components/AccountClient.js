@@ -17,6 +17,7 @@ import { useAuthStore, useUser } from "@/store/authStore";
 import { formatINR } from "@/lib/format";
 import { fetchProducts } from "@/lib/catalog";
 import { payForOrder } from "@/lib/razorpay";
+import { useFocusRow } from "@/lib/focusRow";
 import QuotationThread from "@/components/QuotationThread";
 import { useConfirm } from "@/components/ConfirmDialog";
 import * as userApi from "@/api/user.api";
@@ -30,10 +31,13 @@ const TABS = [
   { id: "profile", label: "Edit profile", icon: PencilSimple },
 ];
 
-// backend blocks cancellation once production has started or the order is done
+// backend blocks cancellation once production has started or the order is done,
+// and only lets the customer cancel STORE or QUOTATION orders (never MANUAL)
 const NON_CANCELLABLE = ["IN_PRODUCTION", "COMPLETED", "CANCELLED"];
+const CANCELLABLE_SOURCES = ["STORE", "QUOTATION"];
 const canCancelOrder = (o) =>
-  o?.source === "STORE" && !NON_CANCELLABLE.includes(o?.status);
+  CANCELLABLE_SOURCES.includes(o?.source) &&
+  !NON_CANCELLABLE.includes(o?.status);
 
 const STATUS_TONE = {
   PENDING_PAYMENT: "bg-gold-lt text-gold-dk",
@@ -78,6 +82,7 @@ export default function AccountClient() {
   const router = useRouter();
   const params = useSearchParams();
   const tab = params.get("tab") || "dashboard";
+  useFocusRow();
 
   const token = useAuthStore((s) => s.token);
   const hydrated = useAuthStore((s) => s.hydrated);
@@ -356,7 +361,11 @@ function Quotations({ quotes, loading, productMap, onChange }) {
   return (
     <ul className="space-y-3">
       {quotes.map((q) => (
-        <li key={q._id} className="rounded-xl border border-line bg-shell p-5">
+        <li
+          key={q._id}
+          data-focus-id={q._id}
+          className="rounded-xl border border-line bg-shell p-5"
+        >
           <QuotationThread
             quotation={q}
             productMap={productMap}
@@ -398,7 +407,11 @@ function Orders({
     <div className="space-y-3">
       <ul className="space-y-3">
         {orders.map((o) => (
-          <li key={o._id} className="rounded-xl border border-line bg-shell">
+          <li
+            key={o._id}
+            data-focus-id={o._id}
+            className="rounded-xl border border-line bg-shell"
+          >
             <OrderRow
               order={o}
               expanded
