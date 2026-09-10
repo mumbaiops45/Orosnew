@@ -792,7 +792,7 @@ function OrderPlaced({ order }) {
 
         <div className="mt-8 flex gap-3">
           <Link
-            href="/account/orders"
+            href="/account?tab=orders"
             className="rounded-md border border-line px-6 py-3.5 text-sm font-extrabold uppercase tracking-wide text-ink transition-colors hover:border-ink-5"
           >
             View orders

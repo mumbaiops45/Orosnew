@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Bell,
   BellRinging,
   X,
+  Trash,
   FileText,
   Package,
   ChatCircleText,
@@ -13,31 +14,29 @@ import {
   XCircle,
 } from "@phosphor-icons/react";
 import { useUser } from "@/store/authStore";
-import { listNotifications } from "@/api/notification.api";
+import { useConfirm } from "@/components/ConfirmDialog";
+import {
+  listNotifications,
+  markNotificationRead,
+  deleteNotification,
+  clearNotifications,
+} from "@/api/notification.api";
 
-const SEEN_KEY = "oros.notif.seen";
 const POLL_MS = 60_000;
 
-const readSeen = () => {
-  if (typeof window === "undefined") return null;
-  try {
-    return localStorage.getItem(SEEN_KEY);
-  } catch {
-    return null;
-  }
-};
-const writeSeen = (iso) => {
-  try {
-    localStorage.setItem(SEEN_KEY, iso);
-  } catch {}
-};
+const TABS = [
+  { id: "all", label: "All" },
+  { id: "unread", label: "Unread" },
+  { id: "read", label: "Read" },
+];
 
-/** Newest createdAt in the list, as an ISO string. */
-const newestAt = (items) =>
-  items.reduce(
-    (max, n) => (n.createdAt && n.createdAt > max ? n.createdAt : max),
-    ""
-  );
+/** query the GET / DELETE endpoints take for a given tab. */
+const queryFor = (tab) =>
+  tab === "unread"
+    ? { isRead: false }
+    : tab === "read"
+      ? { isRead: true }
+      : {};
 
 /** icon + where the notification points, keyed off the backend `type` enum.
  *  `referenceId` is the quotation / order id — carried through as `?focus=` so
@@ -84,23 +83,31 @@ export default function NotificationBell() {
   const { isSignedIn, isAdmin } = useUser();
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState("all");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [seen, setSeen] = useState(null);
+  const [unread, setUnread] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const { confirm, ConfirmDialog } = useConfirm();
 
-  useEffect(() => {
-    setMounted(true);
-    setSeen(readSeen());
-  }, []);
-
+  useEffect(() => setMounted(true), []);
   const signedIn = mounted && isSignedIn;
 
-  const load = useCallback(async () => {
+  const refreshUnread = useCallback(async () => {
+    try {
+      const data = await listNotifications({ isRead: false, limit: 99 });
+      setUnread(Array.isArray(data) ? data.length : 0);
+    } catch {
+      /* keep the last known count */
+    }
+  }, []);
+
+  const load = useCallback(async (which) => {
     setLoading(true);
     setError("");
     try {
-      const data = await listNotifications();
+      const data = await listNotifications({ ...queryFor(which), limit: 50 });
       setItems(Array.isArray(data) ? data : []);
     } catch (e) {
       setError(e.message || "Could not load notifications");
@@ -109,16 +116,22 @@ export default function NotificationBell() {
     }
   }, []);
 
-  // fetch on sign-in, then poll while signed in
+  // poll the unread count while signed in
   useEffect(() => {
     if (!signedIn) {
       setItems([]);
+      setUnread(0);
       return;
     }
-    load();
-    const id = setInterval(load, POLL_MS);
+    refreshUnread();
+    const id = setInterval(refreshUnread, POLL_MS);
     return () => clearInterval(id);
-  }, [signedIn, load]);
+  }, [signedIn, refreshUnread]);
+
+  // (re)load the list whenever the panel is open and the tab changes
+  useEffect(() => {
+    if (signedIn && open) load(tab);
+  }, [signedIn, open, tab, load]);
 
   // close on Escape
   useEffect(() => {
@@ -128,30 +141,62 @@ export default function NotificationBell() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  // opening the panel marks everything currently shown as seen
-  const openPanel = () => {
-    setOpen(true);
-    const top = newestAt(items);
-    if (top) {
-      writeSeen(top);
-      setSeen(top);
+  // click-through: close the panel, mark read, then the <Link> navigates
+  const openItem = (n) => {
+    setOpen(false);
+    if (n.isRead) return;
+    markNotificationRead(n._id).catch(() => {});
+    setItems((list) =>
+      tab === "unread"
+        ? list.filter((x) => x._id !== n._id)
+        : list.map((x) => (x._id === n._id ? { ...x, isRead: true } : x))
+    );
+    setUnread((c) => Math.max(0, c - 1));
+  };
+
+  // individual delete — no confirmation, optimistic
+  const removeOne = async (id) => {
+    const prev = items;
+    setItems((list) => list.filter((x) => x._id !== id));
+    try {
+      await deleteNotification(id);
+      refreshUnread();
+    } catch (e) {
+      setError(e.message || "Could not delete");
+      setItems(prev);
     }
   };
 
-  const unread = items.filter((n) =>
-    seen ? n.createdAt > seen : !n.isRead
-  ).length;
+  // clear the whole tab — always behind a centered confirm
+  const clearTab = async () => {
+    const label =
+      tab === "read"
+        ? "Delete all read notifications?"
+        : tab === "unread"
+          ? "Delete all unread notifications?"
+          : "Delete all notifications?";
+    if (!(await confirm(label, "Delete"))) return;
+    setBusy(true);
+    setError("");
+    try {
+      await clearNotifications(queryFor(tab));
+      setItems([]);
+      refreshUnread();
+    } catch (e) {
+      setError(e.message || "Could not clear notifications");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   if (!signedIn) return null;
 
   return (
     <>
       <button
-        onClick={openPanel}
+        onClick={() => setOpen(true)}
         aria-label={
-          unread > 0
-            ? `Notifications, ${unread} unread`
-            : "Notifications"
+          unread > 0 ? `Notifications, ${unread} unread` : "Notifications"
         }
         className="relative flex items-center rounded-xl px-2 py-2 transition-colors hover:bg-white/5"
       >
@@ -186,22 +231,53 @@ export default function NotificationBell() {
             open ? "translate-x-0" : "translate-x-full"
           }`}
         >
-          <header className="flex items-center justify-between border-b border-line px-5 py-5">
-            <div>
-              <p className="font-display text-lg font-extrabold text-ink">
-                Notifications
-              </p>
-              <p className="text-xs text-ink-3">
-                {isAdmin ? "Store activity" : "Updates on your orders & quotes"}
-              </p>
+          <header className="border-b border-line px-5 pb-3 pt-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-display text-lg font-extrabold text-ink">
+                  Notifications
+                </p>
+                <p className="text-xs text-ink-3">
+                  {isAdmin
+                    ? "Store activity"
+                    : "Updates on your orders & quotes"}
+                </p>
+              </div>
+              <button
+                onClick={() => setOpen(false)}
+                aria-label="Close"
+                className="grid h-9 w-9 place-items-center rounded-full text-ink-3 transition-colors hover:bg-canvas hover:text-ink"
+              >
+                <X size={18} weight="bold" />
+              </button>
             </div>
-            <button
-              onClick={() => setOpen(false)}
-              aria-label="Close"
-              className="grid h-9 w-9 place-items-center rounded-full text-ink-3 transition-colors hover:bg-canvas hover:text-ink"
-            >
-              <X size={18} weight="bold" />
-            </button>
+
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <div className="flex gap-1.5">
+                {TABS.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setTab(t.id)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+                      tab === t.id
+                        ? "bg-ink text-white"
+                        : "bg-canvas text-ink-2 hover:bg-line"
+                    }`}
+                  >
+                    {t.label}
+                    {t.id === "unread" && unread > 0 ? ` (${unread})` : ""}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={clearTab}
+                disabled={busy || items.length === 0}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-bold text-flame transition-colors hover:bg-flame-lt disabled:opacity-40"
+              >
+                <Trash size={13} />
+                Clear
+              </button>
+            </div>
           </header>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -211,7 +287,7 @@ export default function NotificationBell() {
               <div className="px-5 py-8">
                 <p className="text-sm font-semibold text-flame">{error}</p>
                 <button
-                  onClick={load}
+                  onClick={() => load(tab)}
                   className="mt-3 text-xs font-bold text-flame hover:underline"
                 >
                   Try again
@@ -223,7 +299,11 @@ export default function NotificationBell() {
                   <Bell size={24} className="text-ink-4" />
                 </span>
                 <p className="font-display text-base font-extrabold text-ink">
-                  You&apos;re all caught up
+                  {tab === "unread"
+                    ? "Nothing unread"
+                    : tab === "read"
+                      ? "Nothing read yet"
+                      : "You're all caught up"}
                 </p>
                 <p className="mt-1.5 max-w-[220px] text-sm text-ink-3">
                   New updates on your orders and quotations show up here.
@@ -237,31 +317,48 @@ export default function NotificationBell() {
                     isAdmin,
                     n.referenceId
                   );
-                  const isNew = seen ? n.createdAt > seen : !n.isRead;
                   return (
-                    <li key={n._id}>
+                    <li
+                      key={n._id}
+                      className={`flex items-start gap-2 border-l-2 pl-3 pr-2 ${
+                        n.isRead ? "border-transparent" : "border-flame bg-flame-lt"
+                      }`}
+                    >
                       <Link
                         href={href}
-                        onClick={() => setOpen(false)}
-                        className={`flex gap-3 px-5 py-4 transition-colors hover:bg-canvas ${
-                          isNew ? "bg-flame-lt" : ""
-                        }`}
+                        onClick={() => openItem(n)}
+                        className="flex min-w-0 flex-1 gap-3 py-4"
                       >
                         <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-canvas text-ink-2">
                           <Icon size={17} />
                         </span>
                         <div className="min-w-0 flex-1">
+                          <div className="mb-1 flex items-center gap-2">
+                            <span
+                              className={`rounded px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide ${
+                                n.isRead
+                                  ? "bg-canvas text-ink-4"
+                                  : "bg-flame text-white"
+                              }`}
+                            >
+                              {n.isRead ? "Read" : "Unread"}
+                            </span>
+                            <span className="text-[11px] font-semibold text-ink-4">
+                              {timeAgo(n.createdAt)}
+                            </span>
+                          </div>
                           <p className="text-sm leading-snug text-ink-2">
                             {n.message}
                           </p>
-                          <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-ink-4">
-                            {timeAgo(n.createdAt)}
-                          </p>
                         </div>
-                        {isNew && (
-                          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-flame" />
-                        )}
                       </Link>
+                      <button
+                        onClick={() => removeOne(n._id)}
+                        aria-label="Delete notification"
+                        className="mt-4 grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-3 transition-colors hover:bg-canvas hover:text-flame"
+                      >
+                        <Trash size={15} />
+                      </button>
                     </li>
                   );
                 })}
@@ -270,6 +367,8 @@ export default function NotificationBell() {
           </div>
         </aside>
       </div>
+
+      {ConfirmDialog}
     </>
   );
 }
