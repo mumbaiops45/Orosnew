@@ -52,7 +52,7 @@ export default async function Footer() {
                 <span className="block font-display text-xl font-extrabold leading-none">
                   {value}
                 </span>
-                <span className="mt-1 block text-xs text-white/45">{label}</span>
+                <span className="mt-1 block text-sm text-white/75">{label}</span>
               </span>
             </li>
           ))}

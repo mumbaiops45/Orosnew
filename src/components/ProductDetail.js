@@ -212,13 +212,13 @@ export default function ProductDetail({ product: p }) {
         <span className="font-semibold text-ink">{p.name}</span>
       </nav>
 
-      <div className="mx-auto max-w-[1500px] lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,545px)] lg:items-start">
+      <div className="mx-auto max-w-[1500px] lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,660px)] lg:items-start">
         {/* ══ LEFT — gallery ══ */}
         <div className="lg:sticky lg:top-[99px] lg:pl-8">
-          <div className="flex gap-3 px-5 py-8 lg:px-0">
-            {/* thumbnails, left of the main image */}
+          <div className="flex flex-col-reverse gap-3 px-5 py-8 lg:flex-row lg:px-0">
+            {/* thumbnails — below the main image on mobile, left of it on desktop */}
             {slides.length > 1 && (
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-row flex-wrap gap-2 lg:flex-col lg:flex-nowrap">
                 {slides.map((s, i) => (
                   <button
                     key={i}
@@ -254,7 +254,7 @@ export default function ProductDetail({ product: p }) {
               </div>
             )}
 
-            <div className="relative flex-1">
+            <div className="relative flex-1 lg:mx-auto lg:max-w-105">
               <div
                 ref={art}
                 className="relative aspect-square w-full overflow-hidden rounded-3xl bg-canvas"
@@ -274,7 +274,7 @@ export default function ProductDetail({ product: p }) {
                   <ProductImage
                     src={active?.url || p.image}
                     alt={p.name}
-                    sizes="(max-width: 1024px) 100vw, 45vw"
+                    sizes="(max-width: 1024px) 100vw, 420px"
                     priority
                     overlay
                   />
