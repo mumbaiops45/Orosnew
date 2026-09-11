@@ -20,7 +20,7 @@ import OtpInput from "@/components/OtpInput";
 const CLEAN_PHONE = (v) => v.replace(/\D/g, "").slice(0, 10);
 
 export default function ProfileMenu() {
-  const { isSignedIn, isAdmin, user, firstName, initial, greeting } = useUser();
+  const { isSignedIn, user, firstName, initial, greeting } = useUser();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   // server + first client render always show "Login"; flip after mount
@@ -271,40 +271,24 @@ export default function ProfileMenu() {
             </header>
 
             <nav className="flex-1 overflow-y-auto p-3">
-              {(isAdmin
-                ? [
-                    { href: "/admin", label: "Admin panel", icon: SquaresFour },
-                    { href: "/admin?tab=orders", label: "Orders", icon: Package },
-                    {
-                      href: "/admin?tab=quotations",
-                      label: "Quotations",
-                      icon: FileText,
-                    },
-                    {
-                      href: "/account?tab=profile",
-                      label: "Edit profile",
-                      icon: PencilSimple,
-                    },
-                  ]
-                : [
-                    { href: "/account", label: "Dashboard", icon: SquaresFour },
-                    {
-                      href: "/account?tab=orders",
-                      label: "My orders",
-                      icon: Package,
-                    },
-                    {
-                      href: "/account?tab=quotations",
-                      label: "My quotations",
-                      icon: FileText,
-                    },
-                    {
-                      href: "/account?tab=profile",
-                      label: "Edit profile",
-                      icon: PencilSimple,
-                    },
-                  ]
-              ).map(({ href, label, icon: Icon }) => (
+              {[
+                { href: "/account", label: "Dashboard", icon: SquaresFour },
+                {
+                  href: "/account?tab=orders",
+                  label: "My orders",
+                  icon: Package,
+                },
+                {
+                  href: "/account?tab=quotations",
+                  label: "My quotations",
+                  icon: FileText,
+                },
+                {
+                  href: "/account?tab=profile",
+                  label: "Edit profile",
+                  icon: PencilSimple,
+                },
+              ].map(({ href, label, icon: Icon }) => (
                 <Link
                   key={href}
                   href={href}

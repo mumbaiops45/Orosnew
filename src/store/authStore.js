@@ -54,6 +54,13 @@ export const useAuthStore = create(
         set({ loading: true, error: null });
         try {
           const data = await authApi.verifyLoginOtp({ phone, otp });
+          // this storefront is customer-only — admin/staff accounts log in
+          // through the separate admin frontend instead
+          if (data.user?.role !== "user") {
+            throw new Error(
+              "This login is for customer accounts only. Admins and staff should use the admin panel."
+            );
+          }
           tokenStore.set(data.token);
           set({ user: data.user, token: data.token, loading: false });
           return data.user;
@@ -81,6 +88,12 @@ export const useAuthStore = create(
         if (!tokenStore.get()) return null;
         try {
           const data = await authApi.getMe();
+          // this storefront is customer-only — a stale admin/staff session
+          // (e.g. from before this check existed) gets signed out here
+          if (data.user?.role !== "user") {
+            get().logout();
+            return null;
+          }
           // /me returns a trimmed user ({_id,name,email,role}); keep the
           // richer fields (phone, profileImage) from the login response
           set((s) => ({ user: { ...s.user, ...data.user } }));
@@ -145,7 +158,6 @@ export function useUser() {
     // a token in storage OR a user object both mean "signed in"
     isSignedIn: !!user,
     role,
-    isAdmin: ["admin", "staff", "superAdmin"].includes(role),
     // storefront customer — the only role the cart / checkout serve
     isCustomer: role === "user",
     firstName,

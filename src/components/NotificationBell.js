@@ -41,10 +41,10 @@ const queryFor = (tab) =>
 /** icon + where the notification points, keyed off the backend `type` enum.
  *  `referenceId` is the quotation / order id — carried through as `?focus=` so
  *  the target list scrolls to and highlights that exact row. */
-function metaFor(type, isAdmin, referenceId) {
+function metaFor(type, referenceId) {
   const focus = referenceId ? `&focus=${referenceId}` : "";
-  const qs = `${isAdmin ? "/admin" : "/account"}?tab=quotations${focus}`;
-  const os = `${isAdmin ? "/admin" : "/account"}?tab=orders${focus}`;
+  const qs = `/account?tab=quotations${focus}`;
+  const os = `/account?tab=orders${focus}`;
   switch (type) {
     case "ORDER_PAID_AND_PAYMENT_RECEIVED":
       return { Icon: Package, href: os };
@@ -80,7 +80,7 @@ function timeAgo(iso) {
 }
 
 export default function NotificationBell() {
-  const { isSignedIn, isAdmin } = useUser();
+  const { isSignedIn } = useUser();
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState("all");
@@ -238,9 +238,7 @@ export default function NotificationBell() {
                   Notifications
                 </p>
                 <p className="text-xs text-ink-3">
-                  {isAdmin
-                    ? "Store activity"
-                    : "Updates on your orders & quotes"}
+                  Updates on your orders & quotes
                 </p>
               </div>
               <button
@@ -312,11 +310,7 @@ export default function NotificationBell() {
             ) : (
               <ul className="divide-y divide-line">
                 {items.map((n) => {
-                  const { Icon, href } = metaFor(
-                    n.type,
-                    isAdmin,
-                    n.referenceId
-                  );
+                  const { Icon, href } = metaFor(n.type, n.referenceId);
                   return (
                     <li
                       key={n._id}

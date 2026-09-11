@@ -99,7 +99,7 @@ export default function BannerCarousel({ banners = [] }) {
               alt=""
               fill
               priority={idx === 0}
-              sizes="100vw"
+              sizes="calc(100vw - 2rem)"
               className="block object-cover object-right lg:hidden"
             />
             <Image
@@ -107,7 +107,7 @@ export default function BannerCarousel({ banners = [] }) {
               alt=""
               fill
               priority={idx === 0}
-              sizes="(max-width: 1600px) 100vw, 1600px"
+              sizes="(max-width: 1600px) calc(100vw - 4rem), 1536px"
               className="hidden object-cover object-right lg:block"
             />
           </div>
