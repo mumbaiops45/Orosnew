@@ -231,11 +231,11 @@ export default function ProfileMenu() {
           <aside
             role="dialog"
             aria-label="Your account"
-            className={`absolute right-0 top-0 flex h-full w-full max-w-[360px] flex-col bg-shell shadow-[-16px_0_48px_-16px_rgba(43,27,77,0.4)] transition-transform duration-300 ease-out ${
+            className={`absolute right-0 top-0 flex h-[100dvh] w-full max-w-[360px] flex-col overflow-y-auto bg-shell shadow-[-16px_0_48px_-16px_rgba(43,27,77,0.4)] transition-transform duration-300 ease-out ${
               menuOpen ? "translate-x-0" : "translate-x-full"
             }`}
           >
-            <header className="flex items-center gap-3 border-b border-line px-5 py-5">
+            <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-line bg-shell px-5 py-5">
               <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full border border-line bg-canvas text-ink">
                 {user?.profileImage ? (
                   <Image
@@ -270,7 +270,7 @@ export default function ProfileMenu() {
               </button>
             </header>
 
-            <nav className="flex-1 overflow-y-auto p-3">
+            <nav className="flex-1 p-3">
               {[
                 { href: "/account", label: "Dashboard", icon: SquaresFour },
                 {
@@ -301,7 +301,7 @@ export default function ProfileMenu() {
               ))}
             </nav>
 
-            <div className="border-t border-line p-3">
+            <div className="sticky bottom-0 border-t border-line bg-shell p-3">
               <button
                 onClick={() => {
                   logout();

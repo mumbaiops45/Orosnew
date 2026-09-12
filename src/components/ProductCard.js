@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { Lightning, Eye, Check, X } from "@phosphor-icons/react";
+import { Lightning, Eye, Check, X, Plus } from "@phosphor-icons/react";
 import ProductImage from "@/components/ProductImage";
 import { useCartStore } from "@/store/cartStore";
 import { useAuthStore, useUser } from "@/store/authStore";
@@ -152,16 +152,17 @@ export default function ProductCard({ product: p, className = "", onNavigate }) 
         )}
 
         <span className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-1.5 transition-all duration-300 sm:translate-y-2 sm:opacity-0 sm:group-hover:translate-y-0 sm:group-hover:opacity-100">
-          <span className="flex items-center gap-1 rounded-md bg-shell/95 px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-wide text-ink shadow-md">
-            <Eye size={12} weight="bold" />
-            View
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-shell/95 text-ink shadow-md sm:flex sm:h-auto sm:w-auto sm:items-center sm:gap-1 sm:rounded-md sm:px-3 sm:py-1.5 sm:text-[11px] sm:font-extrabold sm:uppercase sm:tracking-wide">
+            <Eye size={13} weight="bold" />
+            <span className="hidden sm:inline">View</span>
           </span>
           <button
             onClick={onAddClick}
             aria-label={`Add ${p.name} to cart`}
-            className="rounded-md bg-gold px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-wide text-ink shadow-md transition-colors hover:bg-gold-dk"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-gold text-ink shadow-md transition-colors hover:bg-gold-dk sm:flex sm:h-auto sm:w-auto sm:items-center sm:gap-1 sm:rounded-md sm:px-3 sm:py-1.5 sm:text-[11px] sm:font-extrabold sm:uppercase sm:tracking-wide"
           >
-            + Add
+            <Plus size={13} weight="bold" className="sm:hidden" />
+            <span className="hidden sm:inline">+ Add</span>
           </button>
         </span>
 
