@@ -1,3 +1,4 @@
+
 import Link from "next/link";
 import { ArrowRight, Percent, Tag } from "@phosphor-icons/react/ssr";
 import BannerCarousel from "@/components/BannerCarousel";
@@ -5,6 +6,9 @@ import Showreel from "@/components/Showreel";
 import Rail from "@/components/Rail";
 import ProductImage from "@/components/ProductImage";
 import { formatINR } from "@/lib/format";
+
+
+
 import {
   fetchProducts,
   fetchBestSellers,
@@ -30,6 +34,10 @@ export default async function Home() {
       fetchBanners("SLIDER"),
       fetchBanners("SHOWREEL"),
     ]);
+
+      
+
+      
 
   const allProducts = pool.products;
 

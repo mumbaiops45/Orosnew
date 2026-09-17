@@ -15,14 +15,13 @@ import {
 } from "@phosphor-icons/react";
 import { useUser } from "@/store/authStore";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { socket } from "@/lib/socket";
 import {
   listNotifications,
   markNotificationRead,
   deleteNotification,
   clearNotifications,
 } from "@/api/notification.api";
-
-const POLL_MS = 60_000;
 
 const TABS = [
   { id: "all", label: "All" },
@@ -116,7 +115,7 @@ export default function NotificationBell() {
     }
   }, []);
 
-  // poll the unread count while signed in
+  // fetch the unread count once signed in — live updates come over the socket
   useEffect(() => {
     if (!signedIn) {
       setItems([]);
@@ -124,9 +123,18 @@ export default function NotificationBell() {
       return;
     }
     refreshUnread();
-    const id = setInterval(refreshUnread, POLL_MS);
-    return () => clearInterval(id);
   }, [signedIn, refreshUnread]);
+
+  // live: bump the count and splice new notifications straight into an open list
+  useEffect(() => {
+    if (!signedIn) return;
+    const onNotification = (n) => {
+      setUnread((c) => c + 1);
+      setItems((list) => (tab === "read" ? list : [n, ...list]));
+    };
+    socket.on("new_notification", onNotification);
+    return () => socket.off("new_notification", onNotification);
+  }, [signedIn, tab]);
 
   // (re)load the list whenever the panel is open and the tab changes
   useEffect(() => {

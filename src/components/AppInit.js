@@ -8,10 +8,12 @@
 import { useEffect } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useCartStore } from "@/store/cartStore";
+import { socket } from "@/lib/socket";
 
 export default function AppInit() {
   const hydrated = useAuthStore((s) => s.hydrated);
   const token = useAuthStore((s) => s.token);
+  const userId = useAuthStore((s) => s.user?._id);
   const loadMe = useAuthStore((s) => s.loadMe);
   const syncCart = useCartStore((s) => s.syncFromServer);
 
@@ -24,6 +26,18 @@ export default function AppInit() {
   useEffect(() => {
     if (token) syncCart();
   }, [token, syncCart]);
+
+  // live notifications: connect and join this customer's room while signed in
+  useEffect(() => {
+    if (!userId) return;
+    const join = () => socket.emit("customer_join", userId);
+    socket.on("connect", join);
+    socket.connect();
+    return () => {
+      socket.off("connect", join);
+      socket.disconnect();
+    };
+  }, [userId]);
 
   return null;
 }
