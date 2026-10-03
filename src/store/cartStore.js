@@ -372,6 +372,8 @@ export function useCart() {
   return {
     lines: detailed,
     count,
+    // distinct cart documents (one per product + variant), not units
+    itemCount: detailed.length,
     subtotal,
     savings,
     delivery,

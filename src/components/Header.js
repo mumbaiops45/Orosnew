@@ -55,7 +55,8 @@ function HexImage({ src, alt, tone = "neon" }) {
 export default function Header() {
   const [compact, setCompact] = useState(false);
   const [categories, setCategories] = useState([]);
-  const { count, subtotal, openDrawer } = useCart();
+  // the badge counts cart documents for this user, not total units
+  const { itemCount: count, subtotal, openDrawer } = useCart();
   const badge = useRef(null);
   const rail = useRef(null);
   const [canLeft, setCanLeft] = useState(false);
