@@ -10,7 +10,6 @@ import {
   Plus,
   ShoppingCart,
   Lightning,
-  ArrowsClockwise,
   ShieldCheck,
   Check,
   Cube,
@@ -582,10 +581,9 @@ export default function ProductDetail({ product: p }) {
 
           {/* ── Trust badges ── */}
           <div className="mt-6 rounded-2xl border border-line p-5">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {[
                 { icon: Lightning, label: "48h dispatch" },
-                { icon: ArrowsClockwise, label: "14-day returns" },
                 { icon: ShieldCheck, label: "Secure payment" },
               ].map(({ icon: Icon, label }) => (
                 <div

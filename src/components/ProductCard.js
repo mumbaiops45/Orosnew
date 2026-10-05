@@ -312,8 +312,10 @@ export default function ProductCard({
       )}
 
       {showOptions && configurable && (
+        // at most two single-line rows — a product with many long options
+        // must not make the card (and so the whole rail row) taller
         <div className="mt-1.5 space-y-1">
-          {options.map((opt) => (
+          {options.slice(0, 2).map((opt) => (
             <div
               key={opt.id || opt.name}
               className="flex items-center gap-1.5 overflow-hidden"
@@ -321,19 +323,19 @@ export default function ProductCard({
               <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-ink-4">
                 {opt.name}:
               </span>
-              <div className="flex min-w-0 flex-wrap gap-1">
+              <div className="flex min-w-0 flex-nowrap gap-1 overflow-hidden">
                 {(opt.values || []).map((v) =>
                   opt.type === "COLOR" ? (
                     <span
                       key={v.id || v.value}
                       title={v.value}
-                      className="h-3.5 w-3.5 rounded-full ring-1 ring-inset ring-black/10"
+                      className="h-3.5 w-3.5 shrink-0 rounded-full ring-1 ring-inset ring-black/10"
                       style={{ backgroundColor: colorHex(v.value) }}
                     />
                   ) : (
                     <span
                       key={v.id || v.value}
-                      className="rounded border border-line px-1.5 py-0.5 text-[10px] font-semibold leading-none text-ink-2"
+                      className="shrink-0 whitespace-nowrap rounded border border-line px-1.5 py-0.5 text-[10px] font-semibold leading-none text-ink-2"
                     >
                       {v.value}
                     </span>
