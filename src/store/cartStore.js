@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import * as cartApi from "@/api/cart.api";
@@ -116,6 +117,10 @@ export const useCartStore = create(
         const key = lineKeyFor(productId, options);
         const quantity = Math.max(1, Number(qty) || 1);
 
+        // the same product + same option values is already a line — don't
+        // stack it again; a different value (e.g. Medium vs Small) still adds
+        if (get().lines.some((l) => l.key === key)) return false;
+
         set((state) => {
           const removedKeys = state.removedKeys.filter((k) => k !== key);
           const existing = state.lines.find((l) => l.key === key);
@@ -187,6 +192,7 @@ export const useCartStore = create(
         } else if (openCart) {
           set({ drawerOpen: true });
         }
+        return true;
       },
 
       setQty: (key, qty) => {
@@ -314,6 +320,19 @@ export const useCartStore = create(
     }
   )
 );
+
+/**
+ * True when this exact product + option values is already a cart line.
+ * Pass `null` options while the customer hasn't finished choosing.
+ * Stays false until mounted so SSR and the first client render agree.
+ */
+export function useInCart(productId, options = []) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const key = productId && options ? lineKeyFor(productId, options) : null;
+  const hit = useCartStore((s) => !!key && s.lines.some((l) => l.key === key));
+  return mounted && hit;
+}
 
 /** Derived cart view — identical surface to the old CartContext. */
 export function useCart() {

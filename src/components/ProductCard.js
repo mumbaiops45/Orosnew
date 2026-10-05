@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { Lightning, Eye, Check, X, Plus } from "@phosphor-icons/react";
 import ProductImage from "@/components/ProductImage";
-import { useCartStore } from "@/store/cartStore";
+import { useCartStore, useInCart } from "@/store/cartStore";
 import { useAuthStore, useUser } from "@/store/authStore";
 import { formatINR, discountPct, colorHex } from "@/lib/format";
 
@@ -38,7 +38,12 @@ export function PriceBlock({ product, size = "md" }) {
   );
 }
 
-export default function ProductCard({ product: p, className = "", onNavigate }) {
+export default function ProductCard({
+  product: p,
+  className = "",
+  onNavigate,
+  showOptions = false,
+}) {
   const add = useCartStore((s) => s.add);
   const token = useAuthStore((s) => s.token);
   const { isSignedIn, isCustomer } = useUser();
@@ -52,6 +57,22 @@ export default function ProductCard({ product: p, className = "", onNavigate }) 
   const [picking, setPicking] = useState(false);
   const [selected, setSelected] = useState({});
   const [hint, setHint] = useState("");
+
+  const openDrawer = useCartStore((s) => s.openDrawer);
+  const productId = p.id || p._id;
+
+  // no-option product: is it in the cart at all?
+  const plainInCart = useInCart(productId, configurable ? null : []);
+
+  // option product: is the variant picked in the picker already in the cart?
+  const pickedComplete =
+    configurable && options.every((o) => selected[o.name]);
+  const pickedInCart = useInCart(
+    productId,
+    pickedComplete
+      ? options.map((o) => ({ name: o.name, value: selected[o.name] }))
+      : null
+  );
 
   const stop = (e) => {
     e.preventDefault();
@@ -87,6 +108,10 @@ export default function ProductCard({ product: p, className = "", onNavigate }) 
       setPicking(true);
       return;
     }
+    if (plainInCart) {
+      openDrawer();
+      return;
+    }
     commit([]);
   };
 
@@ -104,6 +129,10 @@ export default function ProductCard({ product: p, className = "", onNavigate }) 
     const missing = options.find((o) => !selected[o.name]);
     if (missing) {
       setHint(`Select ${missing.name}`);
+      return;
+    }
+    if (pickedInCart) {
+      setHint("Already added to cart — pick a different option");
       return;
     }
     const chosen = options.map((o) => {
@@ -161,8 +190,17 @@ export default function ProductCard({ product: p, className = "", onNavigate }) 
             aria-label={`Add ${p.name} to cart`}
             className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-gold text-ink shadow-md transition-colors hover:bg-gold-dk sm:flex sm:h-auto sm:w-auto sm:items-center sm:gap-1 sm:rounded-md sm:px-3 sm:py-1.5 sm:text-[11px] sm:font-extrabold sm:uppercase sm:tracking-wide"
           >
-            <Plus size={13} weight="bold" className="sm:hidden" />
-            <span className="hidden sm:inline">+ Add</span>
+            {plainInCart ? (
+              <>
+                <Check size={13} weight="bold" className="sm:hidden" />
+                <span className="hidden sm:inline">✓ Added</span>
+              </>
+            ) : (
+              <>
+                <Plus size={13} weight="bold" className="sm:hidden" />
+                <span className="hidden sm:inline">+ Add</span>
+              </>
+            )}
           </button>
         </span>
 
@@ -253,9 +291,13 @@ export default function ProductCard({ product: p, className = "", onNavigate }) 
             <button
               type="button"
               onClick={confirmAdd}
-              className="mt-2 w-full rounded-md bg-gold px-3 py-2 text-[11px] font-extrabold uppercase tracking-wide text-ink transition-colors hover:bg-gold-dk"
+              className={`mt-2 w-full rounded-md px-3 py-2 text-[11px] font-extrabold uppercase tracking-wide transition-colors ${
+                pickedInCart
+                  ? "bg-canvas text-ink-3"
+                  : "bg-gold text-ink hover:bg-gold-dk"
+              }`}
             >
-              Add to cart
+              {pickedInCart ? "✓ Already added" : "Add to cart"}
             </button>
           </div>
         )}
@@ -267,6 +309,40 @@ export default function ProductCard({ product: p, className = "", onNavigate }) 
 
       {shortBlurb && (
         <p className="mt-1.5 line-clamp-1 text-xs text-ink-3">{shortBlurb}</p>
+      )}
+
+      {showOptions && configurable && (
+        <div className="mt-1.5 space-y-1">
+          {options.map((opt) => (
+            <div
+              key={opt.id || opt.name}
+              className="flex items-center gap-1.5 overflow-hidden"
+            >
+              <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-ink-4">
+                {opt.name}:
+              </span>
+              <div className="flex min-w-0 flex-wrap gap-1">
+                {(opt.values || []).map((v) =>
+                  opt.type === "COLOR" ? (
+                    <span
+                      key={v.id || v.value}
+                      title={v.value}
+                      className="h-3.5 w-3.5 rounded-full ring-1 ring-inset ring-black/10"
+                      style={{ backgroundColor: colorHex(v.value) }}
+                    />
+                  ) : (
+                    <span
+                      key={v.id || v.value}
+                      className="rounded border border-line px-1.5 py-0.5 text-[10px] font-semibold leading-none text-ink-2"
+                    >
+                      {v.value}
+                    </span>
+                  )
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       <div className="mt-2">

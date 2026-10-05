@@ -9,7 +9,13 @@ import ProductCard from "@/components/ProductCard";
  * Horizontal product row. Arrows page by roughly one viewport of the track,
  * and hide themselves at each end so they never look broken.
  */
-export default function Rail({ title, subtitle, products, href = "/shop" }) {
+export default function Rail({
+  title,
+  subtitle,
+  products,
+  href = "/shop",
+  showOptions = false,
+}) {
   const track = useRef(null);
   const [atStart, setAtStart] = useState(true);
   const [atEnd, setAtEnd] = useState(false);
@@ -68,6 +74,7 @@ export default function Rail({ title, subtitle, products, href = "/shop" }) {
               <ProductCard
                 key={p.slug}
                 product={p}
+                showOptions={showOptions}
                 className="w-[calc(50%-6px)] shrink-0 snap-start sm:w-[calc(33.333%-8px)] lg:w-[calc(20%-10px)]"
               />
             ))}

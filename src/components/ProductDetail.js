@@ -20,7 +20,7 @@ import {
 import { gsap, useGSAP, prefersReducedMotion } from "@/lib/gsap";
 import ProductImage from "@/components/ProductImage";
 import { trackProductView } from "@/api/view.api";
-import { useCartStore } from "@/store/cartStore";
+import { useCartStore, useInCart } from "@/store/cartStore";
 import { useAuthStore, useUser } from "@/store/authStore";
 import { formatINR, colorHex, unitPriceFor } from "@/lib/format";
 
@@ -30,6 +30,7 @@ const BULK_THRESHOLD = 25;
 export default function ProductDetail({ product: p }) {
   const router = useRouter();
   const add = useCartStore((s) => s.add);
+  const openDrawer = useCartStore((s) => s.openDrawer);
   const token = useAuthStore((s) => s.token);
   const { isSignedIn, isCustomer } = useUser();
 
@@ -145,6 +146,12 @@ export default function ProductDetail({ product: p }) {
   const missingOption = () =>
     (p.options || []).find((o) => !selected[o.name]);
 
+  // this exact variant is already a cart line — "Add" becomes "Already added"
+  const inCart = useInCart(
+    p.id || p._id,
+    missingOption() ? null : selectedOptions()
+  );
+
   const doAdd = (thenCheckout = false) => {
     if (!token) {
       setOptError("");
@@ -163,6 +170,11 @@ export default function ProductDetail({ product: p }) {
       return false;
     }
     setOptError("");
+    if (inCart) {
+      // same variant again — never stack it; buy-now just carries on
+      if (!thenCheckout) openDrawer();
+      return true;
+    }
     add(p, {
       options: selectedOptions(),
       qty,
@@ -177,7 +189,7 @@ export default function ProductDetail({ product: p }) {
   };
 
   const handleAdd = () => {
-    if (doAdd()) {
+    if (doAdd() && !inCart) {
       setAdded(true);
       setTimeout(() => setAdded(false), 1800);
     }
@@ -545,6 +557,11 @@ export default function ProductDetail({ product: p }) {
                   <>
                     <Check size={17} weight="bold" />
                     Added
+                  </>
+                ) : inCart ? (
+                  <>
+                    <Check size={17} weight="bold" />
+                    Already added
                   </>
                 ) : (
                   <>

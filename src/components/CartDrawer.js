@@ -9,7 +9,6 @@ import {
   Plus,
   Trash,
   Tag,
-  CaretRight,
   ShoppingCart,
 } from "@phosphor-icons/react";
 import { gsap, useGSAP, prefersReducedMotion } from "@/lib/gsap";
@@ -43,6 +42,21 @@ export default function CartDrawer() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [drawerOpen, closeDrawer]);
+
+  // Lock the page behind the drawer so the wheel only scrolls the cart.
+  // The scrollbar width is padded back in so the page doesn't jump sideways.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const html = document.documentElement;
+    const gap = window.innerWidth - html.clientWidth;
+    const prev = { overflow: html.style.overflow, paddingRight: html.style.paddingRight };
+    html.style.overflow = "hidden";
+    if (gap > 0) html.style.paddingRight = `${gap}px`;
+    return () => {
+      html.style.overflow = prev.overflow;
+      html.style.paddingRight = prev.paddingRight;
+    };
+  }, [drawerOpen]);
 
   // The panel stays mounted so it can animate out; GSAP owns its visibility.
   useGSAP(
@@ -147,6 +161,8 @@ export default function CartDrawer() {
       ref={root}
       className="fixed inset-0 z-[70]"
       style={{ pointerEvents: "none" }}
+      // Lenis hijacks the wheel to scroll the page — let the drawer scroll natively
+      data-lenis-prevent
       aria-hidden={!drawerOpen}
       // The panel stays mounted for its exit animation, so it must be made
       // inert while closed — otherwise you can Tab into an off-screen cart.
@@ -191,7 +207,7 @@ export default function CartDrawer() {
         </header>
 
         {/* ── Body ── */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {lines.length === 0 ? (
             <EmptyDrawer onClose={closeDrawer} />
           ) : (
@@ -277,9 +293,11 @@ export default function CartDrawer() {
                 ))}
               </ul>
 
-              <div data-drawer-anim className="px-5 py-4">
-                <DrawerBanner lines={lines} />
-              </div>
+              {lines.some((l) => l.nextTier) && (
+                <div data-drawer-anim className="px-5 py-4">
+                  <DrawerBanner lines={lines} />
+                </div>
+              )}
 
               {recommended.length > 0 && (
                 <section data-drawer-anim className="border-t border-line px-5 py-5">
@@ -339,48 +357,30 @@ export default function CartDrawer() {
   );
 }
 
-/* ── The contextual banner under the cart lines ─────────── */
+/* ── Bulk-tier nudge under the cart lines (only when one applies) ── */
 
 function DrawerBanner({ lines }) {
   // Nudge toward the next bulk tier on a real line.
   const near = lines.find((l) => l.nextTier);
-  if (near) {
-    const need = near.nextTier.minQty - near.qty;
-    return (
-      <Link
-        href={`/shop/${near.slug}`}
-        className="block rounded-lg border border-lilac/25 bg-lilac-lt p-4 transition-colors hover:border-lilac/50"
-      >
-        <div className="flex items-center gap-2">
-          <Tag size={16} className="text-lilac" weight="fill" />
-          <p className="text-sm font-bold text-ink">Unlock bulk pricing</p>
-        </div>
-        <p className="mt-1.5 text-xs leading-relaxed text-ink-2">
-          Add {need} more {near.product.name} to drop to{" "}
-          <span className="font-bold text-lilac">
-            {formatINR(near.nextTier.price)}/unit
-          </span>{" "}
-          — saving {formatINR((near.unit - near.nextTier.price) * near.nextTier.minQty)}{" "}
-          on the run.
-        </p>
-      </Link>
-    );
-  }
-
-  // Otherwise point at the wholesale desk.
+  if (!near) return null;
+  const need = near.nextTier.minQty - near.qty;
   return (
     <Link
-      href="/bulk"
-      className="flex items-center gap-3 rounded-lg border border-line bg-canvas p-4 transition-colors hover:border-ink-5"
+      href={`/shop/${near.slug}`}
+      className="block rounded-lg border border-lilac/25 bg-lilac-lt p-4 transition-colors hover:border-lilac/50"
     >
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-lilac-lt">
-        <Tag size={15} className="text-lilac" weight="fill" />
-      </span>
-      <div className="flex-1">
-        <p className="text-sm font-bold text-ink">Ordering for a business?</p>
-        <p className="text-xs text-ink-3">See wholesale tier pricing.</p>
+      <div className="flex items-center gap-2">
+        <Tag size={16} className="text-lilac" weight="fill" />
+        <p className="text-sm font-bold text-ink">Unlock bulk pricing</p>
       </div>
-      <CaretRight size={15} className="text-ink-3" weight="bold" />
+      <p className="mt-1.5 text-xs leading-relaxed text-ink-2">
+        Add {need} more {near.product.name} to drop to{" "}
+        <span className="font-bold text-lilac">
+          {formatINR(near.nextTier.price)}/unit
+        </span>{" "}
+        — saving {formatINR((near.unit - near.nextTier.price) * near.nextTier.minQty)}{" "}
+        on the run.
+      </p>
     </Link>
   );
 }

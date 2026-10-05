@@ -62,6 +62,7 @@ export default async function Home() {
           subtitle="What everyone else is printing"
           products={featuredBestsellers}
           href="/shop"
+          showOptions
         />
       )}
 
