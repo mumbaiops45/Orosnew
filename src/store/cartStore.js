@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import * as cartApi from "@/api/cart.api";
+import * as productApi from "@/api/product.api";
+import { normalizeProduct } from "@/lib/normalize";
 import { tokenStore } from "@/lib/axios";
 import { unitPriceFor, applyOptionPricing } from "@/lib/format";
 
@@ -15,6 +17,9 @@ const variantKeyFor = (options = []) =>
       .map((o) => ({ name: o.name, value: o.value }))
       .sort((a, b) => a.name.localeCompare(b.name))
   );
+
+// products whose cart image was already refreshed this page load
+const refreshedIds = new Set();
 
 const lineKeyFor = (productId, options) =>
   `${productId}|${variantKeyFor(options)}`;
@@ -233,6 +238,54 @@ export const useCartStore = create(
       clear: () => {
         set({ lines: [], removedKeys: [] });
         pushToServer(() => cartApi.clearCart());
+      },
+
+      /**
+       * The server cart carries no image, and a stored URL can go stale when
+       * the admin re-uploads media — so pull each line's current image (and
+       * bulk tiers) from the live product. Once per product per page load.
+       */
+      refreshImages: async () => {
+        const ids = [...new Set(get().lines.map((l) => l.productId))].filter(
+          (id) => id && !refreshedIds.has(id)
+        );
+        if (!ids.length) return;
+        ids.forEach((id) => refreshedIds.add(id));
+
+        const fresh = await Promise.all(
+          ids.map((id) =>
+            productApi
+              .getProduct(id)
+              .then((d) => normalizeProduct(d))
+              .catch(() => {
+                refreshedIds.delete(id); // let a later open retry
+                return null;
+              })
+          )
+        );
+        const byId = new Map(
+          fresh.filter(Boolean).map((p) => [String(p.id), p])
+        );
+        if (!byId.size) return;
+
+        set((state) => ({
+          lines: state.lines.map((l) => {
+            const p = byId.get(String(l.productId));
+            if (!p) return l;
+            return {
+              ...l,
+              slug: p.slug || l.slug,
+              snapshot: {
+                ...l.snapshot,
+                name: p.name || l.snapshot?.name,
+                image: p.image || l.snapshot?.image,
+                bulkTiers: p.bulkTiers?.length
+                  ? p.bulkTiers
+                  : l.snapshot?.bulkTiers || [],
+              },
+            };
+          }),
+        }));
       },
 
       openDrawer: () => set({ drawerOpen: true }),

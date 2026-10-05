@@ -1,4 +1,8 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Image from "next/image";
+import { PLACEHOLDER_IMAGE } from "@/lib/normalize";
 
 /**
  * Product photography, in two modes:
@@ -13,6 +17,9 @@ import Image from "next/image";
  * class list silently collapses it to 0px (Tailwind orders `.relative` after
  * `.absolute`, so `relative` wins and the absolute child stops contributing
  * any height).
+ *
+ * A missing or dead URL falls back to the placeholder instead of a broken
+ * image icon.
  */
 export default function ProductImage({
   src,
@@ -24,16 +31,26 @@ export default function ProductImage({
   priority = false,
   overlay = false,
 }) {
+  const [failed, setFailed] = useState(false);
+
+  // a new src (e.g. the cart refreshed a stale URL) gets a fresh try
+  useEffect(() => setFailed(false), [src]);
+
+  const url = !src || failed ? PLACEHOLDER_IMAGE : src;
+
   return (
     <div
       className={`overflow-hidden ${overlay ? "absolute inset-0" : "relative"} ${className}`}
     >
       <Image
-        src={src}
-        alt={alt}
+        src={url}
+        // the optimiser refuses SVGs, so serve the placeholder as-is
+        unoptimized={url.endsWith(".svg")}
+        alt={alt || ""}
         fill
         sizes={sizes}
         priority={priority}
+        onError={() => setFailed(true)}
         className={`${fit === "contain" ? "object-contain" : "object-cover"} ${imgClassName}`}
       />
     </div>

@@ -8,13 +8,12 @@ import {
   Minus,
   Plus,
   Trash,
-  Tag,
   ShoppingCart,
 } from "@phosphor-icons/react";
 import { gsap, useGSAP, prefersReducedMotion } from "@/lib/gsap";
 import ProductImage from "@/components/ProductImage";
 import ProductCard from "@/components/ProductCard";
-import { useCart } from "@/store/cartStore";
+import { useCart, useCartStore } from "@/store/cartStore";
 import { formatINR } from "@/lib/format";
 import { fetchSuggested } from "@/lib/catalog";
 
@@ -34,6 +33,12 @@ export default function CartDrawer() {
   const root = useRef(null);
   const panel = useRef(null);
   const backdrop = useRef(null);
+
+  // Every open, make sure each line shows the product's current image.
+  const refreshImages = useCartStore((s) => s.refreshImages);
+  useEffect(() => {
+    if (drawerOpen) refreshImages();
+  }, [drawerOpen, lines.length, refreshImages]);
 
   // Close on Escape while open.
   useEffect(() => {
@@ -253,13 +258,6 @@ export default function CartDrawer() {
                         </p>
                       )}
 
-                      {l.tiered && (
-                        <p className="mt-1.5 inline-flex items-center gap-1 rounded bg-leaf-lt px-1.5 py-0.5 text-[10px] font-bold text-leaf">
-                          <Tag size={10} weight="fill" />
-                          Bulk {formatINR(l.unit)}/unit
-                        </p>
-                      )}
-
                       <div className="mt-2 flex items-center gap-3">
                         <div className="flex items-center rounded border border-line">
                           <button
@@ -292,12 +290,6 @@ export default function CartDrawer() {
                   </li>
                 ))}
               </ul>
-
-              {lines.some((l) => l.nextTier) && (
-                <div data-drawer-anim className="px-5 py-4">
-                  <DrawerBanner lines={lines} />
-                </div>
-              )}
 
               {recommended.length > 0 && (
                 <section data-drawer-anim className="border-t border-line px-5 py-5">
@@ -354,34 +346,6 @@ export default function CartDrawer() {
         )}
       </aside>
     </div>
-  );
-}
-
-/* ── Bulk-tier nudge under the cart lines (only when one applies) ── */
-
-function DrawerBanner({ lines }) {
-  // Nudge toward the next bulk tier on a real line.
-  const near = lines.find((l) => l.nextTier);
-  if (!near) return null;
-  const need = near.nextTier.minQty - near.qty;
-  return (
-    <Link
-      href={`/shop/${near.slug}`}
-      className="block rounded-lg border border-lilac/25 bg-lilac-lt p-4 transition-colors hover:border-lilac/50"
-    >
-      <div className="flex items-center gap-2">
-        <Tag size={16} className="text-lilac" weight="fill" />
-        <p className="text-sm font-bold text-ink">Unlock bulk pricing</p>
-      </div>
-      <p className="mt-1.5 text-xs leading-relaxed text-ink-2">
-        Add {need} more {near.product.name} to drop to{" "}
-        <span className="font-bold text-lilac">
-          {formatINR(near.nextTier.price)}/unit
-        </span>{" "}
-        — saving {formatINR((near.unit - near.nextTier.price) * near.nextTier.minQty)}{" "}
-        on the run.
-      </p>
-    </Link>
   );
 }
 
