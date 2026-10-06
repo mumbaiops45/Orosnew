@@ -12,6 +12,8 @@ import {
   UserCircle,
   Check,
   FileText,
+  CaretLeft,
+  CaretRight,
 } from "@phosphor-icons/react";
 import { useAuthStore, useUser } from "@/store/authStore";
 import { formatINR } from "@/lib/format";
@@ -221,7 +223,7 @@ export default function AccountClient() {
 
       <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
         {/* ── side nav ── */}
-        <nav className="flex gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
+        <TabScroller>
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -248,7 +250,7 @@ export default function AccountClient() {
             <SignOut size={16} />
             Sign out
           </button>
-        </nav>
+        </TabScroller>
 
         {/* ── panel ── */}
         <div>
@@ -285,6 +287,70 @@ export default function AccountClient() {
         </div>
       </div>
       {ConfirmDialog}
+    </div>
+  );
+}
+
+/**
+ * The account tabs: a sidebar on desktop, a sideways strip on phones. On
+ * phones the scrollbar is hidden (it showed as a stray orange line) and
+ * ‹ › arrows appear only while there are more tabs off-screen that way.
+ */
+function TabScroller({ children }) {
+  const ref = useRef(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () =>
+      setEdges({
+        left: el.scrollLeft > 4,
+        right: el.scrollLeft + el.clientWidth < el.scrollWidth - 4,
+      });
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      el.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  const nudge = (dir) =>
+    ref.current?.scrollBy({ left: dir * 160, behavior: "smooth" });
+
+  const arrow =
+    "absolute top-1/2 z-10 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-shell text-ink shadow-md ring-1 ring-line lg:hidden";
+
+  return (
+    <div className="relative min-w-0">
+      <nav
+        ref={ref}
+        className="no-scrollbar flex gap-2 overflow-x-auto scroll-smooth lg:flex-col lg:overflow-visible"
+      >
+        {children}
+      </nav>
+      {edges.left && (
+        <button
+          type="button"
+          onClick={() => nudge(-1)}
+          aria-label="Scroll tabs left"
+          className={`${arrow} left-0`}
+        >
+          <CaretLeft size={15} weight="bold" />
+        </button>
+      )}
+      {edges.right && (
+        <button
+          type="button"
+          onClick={() => nudge(1)}
+          aria-label="Scroll tabs right"
+          className={`${arrow} right-0`}
+        >
+          <CaretRight size={15} weight="bold" />
+        </button>
+      )}
     </div>
   );
 }
