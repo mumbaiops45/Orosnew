@@ -16,11 +16,13 @@ import {
 import { gsap, useGSAP, prefersReducedMotion } from "@/lib/gsap";
 import { useUser, useAuthStore } from "@/store/authStore";
 import OtpInput from "@/components/OtpInput";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 const CLEAN_PHONE = (v) => v.replace(/\D/g, "").slice(0, 10);
 
 export default function ProfileMenu() {
   const { isSignedIn, user, firstName, initial, greeting } = useUser();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   // server + first client render always show "Login"; flip after mount
@@ -303,9 +305,11 @@ export default function ProfileMenu() {
 
             <div className="sticky bottom-0 border-t border-line bg-shell p-3">
               <button
-                onClick={() => {
-                  logout();
+                onClick={async () => {
                   setMenuOpen(false);
+                  if (!(await confirm("Sign out of your account?", "Sign out")))
+                    return;
+                  logout();
                 }}
                 className="flex w-full items-center gap-3 rounded-xl px-4 py-3.5 text-sm font-bold text-flame transition-colors hover:bg-flame-lt"
               >
@@ -436,6 +440,7 @@ export default function ProfileMenu() {
           </div>
         </div>
       )}
+      {ConfirmDialog}
     </>
   );
 }

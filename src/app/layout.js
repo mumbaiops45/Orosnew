@@ -23,7 +23,9 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${bricolage.variable} ${jakarta.variable}`}>
-      <body>
+      {/* extensions (ColorZilla, Grammarly…) stamp attributes on <body>
+          before React hydrates — ignore those, they are not app bugs */}
+      <body suppressHydrationWarning>
         <AppInit />
         {children}
       </body>

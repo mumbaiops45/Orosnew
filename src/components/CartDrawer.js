@@ -16,6 +16,7 @@ import ProductCard from "@/components/ProductCard";
 import { useCart, useCartStore } from "@/store/cartStore";
 import { formatINR } from "@/lib/format";
 import { fetchSuggested } from "@/lib/catalog";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 export default function CartDrawer() {
   const {
@@ -31,6 +32,7 @@ export default function CartDrawer() {
   } = useCart();
 
   const root = useRef(null);
+  const { confirm, ConfirmDialog } = useConfirm();
   const panel = useRef(null);
   const backdrop = useRef(null);
 
@@ -279,7 +281,15 @@ export default function CartDrawer() {
                           </button>
                         </div>
                         <button
-                          onClick={() => remove(l.key)}
+                          onClick={async () => {
+                            if (
+                              await confirm(
+                                `Remove ${l.product.name} from your cart?`,
+                                "Remove"
+                              )
+                            )
+                              remove(l.key);
+                          }}
                           aria-label={`Remove ${l.product.name}`}
                           className="text-ink-3 transition-colors hover:text-flame"
                         >
@@ -345,6 +355,7 @@ export default function CartDrawer() {
           </footer>
         )}
       </aside>
+      {ConfirmDialog}
     </div>
   );
 }

@@ -88,6 +88,7 @@ export default function AccountClient() {
   const hydrated = useAuthStore((s) => s.hydrated);
   const logout = useAuthStore((s) => s.logout);
   const { user, firstName, greeting } = useUser();
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
@@ -236,7 +237,9 @@ export default function AccountClient() {
             </button>
           ))}
           <button
-            onClick={() => {
+            onClick={async () => {
+              if (!(await confirm("Sign out of your account?", "Sign out")))
+                return;
               logout();
               router.push("/");
             }}
@@ -281,6 +284,7 @@ export default function AccountClient() {
           {tab === "profile" && <ProfileForm />}
         </div>
       </div>
+      {ConfirmDialog}
     </div>
   );
 }
@@ -697,6 +701,7 @@ function OrderRow({ order, expanded = false, onCancel, onChange, quotesById }) {
 }
 
 function ProfileForm() {
+  const { confirm, ConfirmDialog } = useConfirm();
   const setUser = useAuthStore((s) => s.setUser);
   const [form, setForm] = useState({ name: "", email: "" });
   const [preview, setPreview] = useState(null);
@@ -720,6 +725,8 @@ function ProfileForm() {
 
   const submit = async (e) => {
     e.preventDefault();
+    if (!(await confirm("Save these changes to your profile?", "Save")))
+      return;
     setErr("");
     setMsg("");
     setSaving(true);
@@ -743,84 +750,87 @@ function ProfileForm() {
   if (!loaded) return <p className="text-sm text-ink-3">Loading…</p>;
 
   return (
-    <form
-      onSubmit={submit}
-      className="max-w-md space-y-4 rounded-xl border border-line bg-shell p-5"
-    >
-      <div className="flex items-center gap-4">
-        <span className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-full border border-line bg-canvas">
-          {preview ? (
-            <Image
-              src={preview}
-              alt="Profile"
-              width={64}
-              height={64}
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <UserCircle size={30} className="text-ink-3" />
-          )}
-        </span>
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          className="rounded-lg border border-line px-3 py-2 text-xs font-bold text-ink-2 hover:border-ink-5"
-        >
-          Change photo
-        </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          hidden
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) {
-              setFile(f);
-              setPreview(URL.createObjectURL(f));
-            }
-          }}
-        />
-      </div>
-
-      <label className="block">
-        <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-ink-4">
-          Name
-        </span>
-        <input
-          required
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-          className="h-11 w-full rounded-md border border-line px-3.5 text-sm text-ink outline-none focus:border-flame"
-        />
-      </label>
-      <label className="block">
-        <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-ink-4">
-          Email
-        </span>
-        <input
-          required
-          type="email"
-          value={form.email}
-          onChange={(e) => setForm({ ...form, email: e.target.value })}
-          className="h-11 w-full rounded-md border border-line px-3.5 text-sm text-ink outline-none focus:border-flame"
-        />
-      </label>
-
-      {err && <p className="text-xs font-semibold text-flame">{err}</p>}
-      {msg && (
-        <p className="flex items-center gap-1.5 text-xs font-semibold text-leaf">
-          <Check size={13} weight="bold" /> {msg}
-        </p>
-      )}
-
-      <button
-        type="submit"
-        disabled={saving}
-        className="rounded-md bg-flame px-6 py-3 text-sm font-extrabold uppercase tracking-wide text-white transition-colors hover:bg-flame-dk disabled:opacity-60"
+    <>
+      <form
+        onSubmit={submit}
+        className="max-w-md space-y-4 rounded-xl border border-line bg-shell p-5"
       >
-        {saving ? "Saving…" : "Save changes"}
-      </button>
-    </form>
+        <div className="flex items-center gap-4">
+          <span className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-full border border-line bg-canvas">
+            {preview ? (
+              <Image
+                src={preview}
+                alt="Profile"
+                width={64}
+                height={64}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <UserCircle size={30} className="text-ink-3" />
+            )}
+          </span>
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="rounded-lg border border-line px-3 py-2 text-xs font-bold text-ink-2 hover:border-ink-5"
+          >
+            Change photo
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) {
+                setFile(f);
+                setPreview(URL.createObjectURL(f));
+              }
+            }}
+          />
+        </div>
+  
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-ink-4">
+            Name
+          </span>
+          <input
+            required
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            className="h-11 w-full rounded-md border border-line px-3.5 text-sm text-ink outline-none focus:border-flame"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-ink-4">
+            Email
+          </span>
+          <input
+            required
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            className="h-11 w-full rounded-md border border-line px-3.5 text-sm text-ink outline-none focus:border-flame"
+          />
+        </label>
+  
+        {err && <p className="text-xs font-semibold text-flame">{err}</p>}
+        {msg && (
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-leaf">
+            <Check size={13} weight="bold" /> {msg}
+          </p>
+        )}
+  
+        <button
+          type="submit"
+          disabled={saving}
+          className="rounded-md bg-flame px-6 py-3 text-sm font-extrabold uppercase tracking-wide text-white transition-colors hover:bg-flame-dk disabled:opacity-60"
+        >
+          {saving ? "Saving…" : "Save changes"}
+        </button>
+      </form>
+      {ConfirmDialog}
+    </>
   );
 }

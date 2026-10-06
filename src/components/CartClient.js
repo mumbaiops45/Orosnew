@@ -166,7 +166,15 @@ export default function CartClient() {
                     </span>
 
                     <button
-                      onClick={() => remove(l.key)}
+                      onClick={async () => {
+                        if (
+                          await confirm(
+                            `Remove ${l.product.name} from your cart?`,
+                            "Remove"
+                          )
+                        )
+                          remove(l.key);
+                      }}
                       className="ml-auto flex items-center gap-1.5 text-xs font-bold text-ink-3 transition-colors hover:text-flame"
                     >
                       <Trash size={14} />
