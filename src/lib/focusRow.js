@@ -12,8 +12,14 @@ import { useSearchParams } from "next/navigation";
  * matching row before the scroll lands. Pass the ids currently rendered.
  */
 export function useFocusRow(ids = [], onMatch) {
-  const focus = useSearchParams().get("focus");
+  const params = useSearchParams();
+  const focus = params.get("focus");
+  // bumped on every notification click, so the same row re-focuses
+  const stamp = params.get("t");
   const matched = useRef(null);
+  useEffect(() => {
+    matched.current = null;
+  }, [stamp]);
 
   // let the owning list open the row as soon as its data includes the id —
   // once per focus value, so a background reload can't reopen a closed row
@@ -48,5 +54,5 @@ export function useFocusRow(ids = [], onMatch) {
     return () => {
       cancelled = true;
     };
-  }, [focus]);
+  }, [focus, stamp]);
 }

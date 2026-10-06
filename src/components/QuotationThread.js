@@ -8,6 +8,7 @@ import {
   DownloadSimple,
   ShieldCheck,
   ArrowRight,
+  CheckCircle,
 } from "@phosphor-icons/react";
 import { formatINR } from "@/lib/format";
 import { updateQuotation } from "@/api/quotation.api";
@@ -31,7 +32,7 @@ const STATUS_NOTE = {
   PENDING: "Sent to the desk. You'll get a price here once they've reviewed it.",
   IN_REVIEW: "The desk is working on your numbers.",
   QUOTED:
-    "The desk has priced this. Talk it through below — they'll mark it accepted when it's final.",
+    "The desk has priced this. Happy with it? Hit Accept — the desk confirms, then you can pay.",
   ACCEPTED: "This quote is final. Pay below to turn it into an order.",
   CONVERTED: "Converted to an order.",
   REJECTED: "The desk couldn't take this one on.",
@@ -104,8 +105,25 @@ export default function QuotationThread({
   const expired =
     q.validTill && new Date(q.validTill).getTime() < Date.now();
 
+  // the customer's accept is a thread message; the desk then marks it ACCEPTED
+  const canAccept = q.status === "QUOTED" && (q.total || 0) > 0 && !expired;
+  const acceptSent = useMemo(() => {
+    const lastAccept = messages.findLast(
+      (m) => m.sender === "CUSTOMER" && m.message?.startsWith("✅ I accept")
+    );
+    if (!lastAccept) return false;
+    // a newer desk reply (e.g. a re-quote) re-opens the accept button
+    const lastDesk = messages.findLast((m) => m.sender === "ADMIN");
+    return (
+      !lastDesk ||
+      new Date(lastAccept.createdAt) > new Date(lastDesk.createdAt)
+    );
+  }, [messages]);
+
   const itemName = (it) => {
-    const p = productMap?.get?.(String(it.product));
+    // the list endpoint attaches { _id, name, sku }; older payloads send the id
+    if (it.product?.name) return it.product.name;
+    const p = productMap?.get?.(String(it.product?._id || it.product));
     if (p) return p.name;
     return it.product ? "Catalogue item" : "Custom item";
   };
@@ -137,6 +155,27 @@ export default function QuotationThread({
     try {
       const fd = new FormData();
       fd.append("status", "CANCELLED");
+      await updateQuotation(q._id, fd);
+      await onChange?.();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const accept = async () => {
+    if (
+      !(await confirm(
+        `Accept this quotation for ${formatINR(q.total || 0)}? The desk will confirm it, then you can pay.`
+      ))
+    )
+      return;
+    setErr("");
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("status", "ACCEPTED");
       await updateQuotation(q._id, fd);
       await onChange?.();
     } catch (e) {
@@ -395,11 +434,27 @@ export default function QuotationThread({
               <PaperPlaneRight size={13} weight="fill" />
               {busy ? "Sending…" : "Send"}
             </button>
+            {canAccept &&
+              (acceptSent ? (
+                <span className="ml-auto inline-flex items-center gap-1 rounded-lg bg-leaf-lt px-3 py-2 text-xs font-bold text-leaf">
+                  <CheckCircle size={13} weight="fill" />
+                  Accepted · awaiting desk
+                </span>
+              ) : (
+                <button
+                  onClick={accept}
+                  disabled={busy}
+                  className="ml-auto inline-flex items-center gap-1 rounded-lg bg-leaf px-3 py-2 text-xs font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  <CheckCircle size={13} weight="fill" />
+                  Accept
+                </button>
+              ))}
             {CANCELLABLE.includes(q.status) && (
               <button
                 onClick={cancel}
                 disabled={busy}
-                className="ml-auto rounded-lg border border-flame px-3 py-2 text-xs font-bold text-flame transition-colors hover:bg-flame-lt disabled:opacity-50"
+                className={`${canAccept ? "" : "ml-auto"} rounded-lg border border-flame px-3 py-2 text-xs font-bold text-flame transition-colors hover:bg-flame-lt disabled:opacity-50`}
               >
                 Cancel request
               </button>

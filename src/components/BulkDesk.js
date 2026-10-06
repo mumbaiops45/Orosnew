@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useSearchParams } from "next/navigation";
-import { CaretRight } from "@phosphor-icons/react";
+import { CaretRight, Plus, Trash } from "@phosphor-icons/react";
 import { fetchProducts } from "@/lib/catalog";
 import { createQuotation, listQuotations } from "@/api/quotation.api";
 import { getAddress } from "@/api/address.api";
@@ -46,8 +46,16 @@ export default function BulkDesk() {
   const token = useAuthStore((s) => s.token);
 
   const [products, setProducts] = useState([]);
-  const [productId, setProductId] = useState("");
-  const [qty, setQty] = useState(qtyParam > 0 ? qtyParam : 250);
+  // bulk quotes can carry several products — one row per product
+  const [lines, setLines] = useState([
+    { productId: "", qty: qtyParam > 0 ? qtyParam : 250 },
+  ]);
+  const setLine = (i, patch) =>
+    setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  const removeLine = (i) => setLines((ls) => ls.filter((_, j) => j !== i));
+  // a new row starts empty — the customer picks the product themselves
+  const addLine = () =>
+    setLines((ls) => [...ls, { productId: "", qty: 250 }]);
   const [created, setCreated] = useState(null);
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState("");
@@ -123,8 +131,14 @@ export default function BulkDesk() {
         products.find(
           (p) => p.slug === productParam || p.id === productParam
         );
+      const first = fromLink || products[0];
+      if (first)
+        setLines((ls) =>
+          ls.map((l, i) =>
+            i === 0 && !l.productId ? { ...l, productId: first.id } : l
+          )
+        );
       if (fromLink) {
-        setProductId(fromLink.id);
         if (isCustom) {
           setForm((f) =>
             f.requirements
@@ -132,17 +146,22 @@ export default function BulkDesk() {
               : { ...f, requirements: `Custom order based on ${fromLink.name}: ` }
           );
         }
-      } else if (products[0]) {
-        setProductId((cur) => cur || products[0].id);
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productParam, isCustom]);
 
-  const product = useMemo(
-    () => products.find((p) => p.id === productId) || null,
-    [products, productId]
-  );
+  // the filled-in rows, with the same product merged into one line
+  const chosen = useMemo(() => {
+    const byId = new Map();
+    for (const l of lines) {
+      const p = productMap.get(String(l.productId));
+      if (!p) continue;
+      const prev = byId.get(p.id);
+      byId.set(p.id, { product: p, qty: (prev?.qty || 0) + l.qty });
+    }
+    return [...byId.values()];
+  }, [lines, productMap]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -164,6 +183,17 @@ export default function BulkDesk() {
       ["pincode", "Pincode"],
     ]) {
       if (!form[k]?.trim()) return setErr(`${label} is required`);
+    }
+
+    if (!isCustom) {
+      const empty = lines.findIndex((l) => !l.productId);
+      if (empty !== -1)
+        return setErr(
+          lines.length > 1
+            ? `Select a product for row ${empty + 1}, or remove that row`
+            : "Select a product"
+        );
+      if (chosen.length === 0) return setErr("Add at least one product");
     }
 
     setSending(true);
@@ -192,9 +222,17 @@ export default function BulkDesk() {
             ]
               .filter(Boolean)
               .join("\n")
-          : `${qty} × ${product?.name}${
-              product?.sku ? ` (SKU ${product.sku})` : ""
-            }. ${form.requirements || ""}`.trim()
+          : [
+              chosen
+                .map(
+                  ({ product: p, qty }) =>
+                    `${qty} × ${p.name}${p.sku ? ` (SKU ${p.sku})` : ""}`
+                )
+                .join("; "),
+              form.requirements || "",
+            ]
+              .filter(Boolean)
+              .join(". ")
       );
       fd.append(
         "shippingAddress",
@@ -209,10 +247,12 @@ export default function BulkDesk() {
           pincode: form.pincode,
         })
       );
-      if (!isCustom && product) {
+      if (!isCustom) {
         fd.append(
           "items",
-          JSON.stringify([{ productId: product.id, qty }])
+          JSON.stringify(
+            chosen.map(({ product: p, qty }) => ({ productId: p.id, qty }))
+          )
         );
       } else if (isCustom && preferred) {
         fd.append(
@@ -229,7 +269,8 @@ export default function BulkDesk() {
       // free-text custom request by hand; the backend defaults its
       // placeholder item to qty 1
       // POST /quotation reads these off the "files" field (multer .array("files"))
-      for (const f of files) fd.append("files", f);
+      // 3D files are a custom-project thing; bulk quotes don't take them
+      if (isCustom) for (const f of files) fd.append("files", f);
 
       const res = await createQuotation(fd);
       setCreated({
@@ -304,7 +345,7 @@ export default function BulkDesk() {
         <p className="mt-3 max-w-2xl text-base leading-relaxed text-ink-2">
           {isCustom
             ? "Tell us what you need — dimensions, materials, finishing, quantities. The desk comes back with pricing and a lead time on the quotation."
-            : "Pick a product and quantity, send it to the desk, and they'll come back on the quotation with a per-unit price, tax, freight and a lead time. Talk it through in the thread — pay once it's final."}
+            : "Pick your products and quantities, send them to the desk, and they'll come back on the quotation with a per-unit price, tax, freight and a lead time. Talk it through in the thread — pay once it's final."}
         </p>
         <div className="mt-4 flex gap-2">
           <Link
@@ -336,76 +377,100 @@ export default function BulkDesk() {
             What are you ordering?
           </h2>
           <p className="mt-1 text-sm text-ink-3">
-            Pick the product and quantity. The desk prices every bulk order by
-            hand — the numbers come back to you on the quotation.
+            Pick one or more products and quantities. The desk prices every bulk
+            order by hand — the numbers come back to you on the quotation.
           </p>
 
-          <div className="mt-6 grid gap-5 sm:grid-cols-[120px_minmax(0,1fr)]">
-            <div className="relative h-[120px] w-[120px] overflow-hidden rounded-xl bg-canvas">
-              {product && (
-                <Image
-                  src={product.image}
-                  alt={product.name}
-                  fill
-                  sizes="120px"
-                  className="object-cover"
-                />
-              )}
-            </div>
-
-            <div className="space-y-4">
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-ink-4">
-                  Product<span className="text-flame"> *</span>
-                </span>
-                <select
-                  value={productId}
-                  onChange={(e) => setProductId(e.target.value)}
-                  className="h-11 w-full rounded-lg border border-line bg-shell px-3 text-sm font-bold text-ink outline-none focus:border-flame"
+          <div className="mt-6 space-y-3">
+            {lines.map((l, i) => {
+              const p = productMap.get(String(l.productId));
+              return (
+                <div
+                  key={i}
+                  className="grid grid-cols-[64px_minmax(0,1fr)] gap-3 rounded-xl border border-line p-3 sm:grid-cols-[64px_minmax(0,1fr)_140px_auto] sm:items-end"
                 >
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                      {p.categoryName ? ` — ${p.categoryName}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <div className="relative h-16 w-16 overflow-hidden rounded-lg bg-canvas">
+                    {p && (
+                      <Image
+                        src={p.image}
+                        alt={p.name}
+                        fill
+                        sizes="64px"
+                        className="object-cover"
+                      />
+                    )}
+                  </div>
 
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-ink-4">
-                  Quantity<span className="text-flame"> *</span>
-                </span>
-                <input
-                  type="number"
-                  min={1}
-                  max={100000}
-                  value={qty}
-                  onChange={(e) =>
-                    setQty(
-                      Math.max(1, Math.min(100000, Number(e.target.value) || 1))
-                    )
-                  }
-                  className="no-spin h-11 w-full rounded-lg border border-line px-3 font-display text-lg font-extrabold text-ink outline-none focus:border-flame"
-                />
-              </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-ink-4">
+                      Product{lines.length > 1 ? ` ${i + 1}` : ""}
+                      <span className="text-flame"> *</span>
+                    </span>
+                    <select
+                      value={l.productId}
+                      onChange={(e) => setLine(i, { productId: e.target.value })}
+                      className={`h-11 w-full rounded-lg border bg-shell px-3 text-sm font-bold outline-none focus:border-flame ${
+                        l.productId ? "border-line text-ink" : "border-flame/50 text-ink-3"
+                      }`}
+                    >
+                      <option value="" disabled>
+                        Select product
+                      </option>
+                      {products.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                          {p.categoryName ? ` — ${p.categoryName}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-              <div className="flex flex-wrap gap-2">
-                {[25, 50, 75, 200, 500, 1000].map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setQty(n)}
-                    className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors ${
-                      qty === n
-                        ? "border-flame bg-flame-lt text-flame"
-                        : "border-line text-ink-2 hover:border-ink-5"
-                    }`}
-                  >
-                    {n.toLocaleString("en-IN")}
-                  </button>
-                ))}
-              </div>
+                  <label className="col-span-2 block sm:col-span-1">
+                    <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-ink-4">
+                      Quantity<span className="text-flame"> *</span>
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100000}
+                      value={l.qty}
+                      onChange={(e) =>
+                        setLine(i, {
+                          qty: Math.max(
+                            1,
+                            Math.min(100000, Number(e.target.value) || 1)
+                          ),
+                        })
+                      }
+                      className="no-spin h-11 w-full rounded-lg border border-line px-3 font-display text-lg font-extrabold text-ink outline-none focus:border-flame"
+                    />
+                  </label>
 
+                  {lines.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeLine(i)}
+                      aria-label="Remove product"
+                      className="col-span-2 inline-flex h-11 items-center justify-center gap-1.5 rounded-lg border border-line px-3 text-xs font-bold text-ink-3 transition-colors hover:border-flame hover:text-flame sm:col-span-1"
+                    >
+                      <Trash size={14} />
+                      <span className="sm:hidden">Remove</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <button
+                type="button"
+                onClick={addLine}
+                disabled={lines.length >= products.length}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-flame px-4 py-3 text-sm font-extrabold uppercase tracking-wide text-flame transition-colors hover:bg-flame-lt disabled:opacity-40"
+              >
+                <Plus size={14} weight="bold" />
+                Add another product
+              </button>
               <a
                 href="#enquiry"
                 className="inline-flex items-center gap-2 rounded-xl bg-flame px-5 py-3 text-sm font-extrabold uppercase tracking-wide text-white transition-colors hover:bg-flame-dk"
@@ -434,16 +499,20 @@ export default function BulkDesk() {
               </p>
             )}
 
-            {!isCustom && product && (
-              <p className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-xl bg-canvas px-4 py-2.5 text-sm">
-                <span className="font-bold text-ink">
-                  {qty.toLocaleString("en-IN")} × {product.name}
+            {!isCustom && chosen.length > 0 && (
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                {chosen.map(({ product: p, qty }) => (
+                  <span
+                    key={p.id}
+                    className="rounded-xl bg-canvas px-3 py-2 text-sm font-bold text-ink"
+                  >
+                    {qty.toLocaleString("en-IN")} × {p.name}
+                  </span>
+                ))}
+                <span className="text-sm font-semibold text-ink-2">
+                  · priced by the desk
                 </span>
-                <span className="text-ink-3">·</span>
-                <span className="font-semibold text-ink-2">
-                  priced by the desk
-                </span>
-              </p>
+              </div>
             )}
 
             <form onSubmit={submit} className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -660,6 +729,7 @@ export default function BulkDesk() {
                 />
               </RequiredField>
 
+              {isCustom && (
               <label className="rounded-xl border border-dashed border-line px-4 py-3 text-sm text-ink-3 sm:col-span-2">
                 <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-ink-4">
                   3D model files (optional, up to 10)
@@ -708,6 +778,7 @@ export default function BulkDesk() {
                   </span>
                 )}
               </label>
+              )}
 
               {err && (
                 <p className="text-xs font-semibold text-flame sm:col-span-2">

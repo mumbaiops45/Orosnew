@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Bell,
   BellRinging,
@@ -81,6 +82,7 @@ function timeAgo(iso) {
 export default function NotificationBell() {
   const { isSignedIn } = useUser();
   const [mounted, setMounted] = useState(false);
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState("all");
   const [items, setItems] = useState([]);
@@ -328,7 +330,13 @@ export default function NotificationBell() {
                     >
                       <Link
                         href={href}
-                        onClick={() => openItem(n)}
+                        onClick={(e) => {
+                          // a fresh `t` makes the target page re-fetch and
+                          // re-focus even when we're already on that URL
+                          e.preventDefault();
+                          openItem(n);
+                          router.push(`${href}&t=${Date.now()}`);
+                        }}
                         className="flex min-w-0 flex-1 gap-3 py-4"
                       >
                         <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-canvas text-ink-2">

@@ -137,6 +137,16 @@ export default function AccountClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  // a notification click stamps `?t=` — pull the latest quotes / orders so
+  // the row it points at shows its newest state, even on the same page
+  const refreshStamp = params.get("t");
+  useEffect(() => {
+    if (!refreshStamp) return;
+    loadQuotes();
+    loadOrders(ordersPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshStamp]);
+
   useEffect(() => {
     if (ordersPage !== 1) loadOrders(ordersPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
