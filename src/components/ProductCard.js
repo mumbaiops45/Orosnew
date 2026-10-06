@@ -43,6 +43,7 @@ export default function ProductCard({
   className = "",
   onNavigate,
   showOptions = false,
+  priority = false,
 }) {
   const add = useCartStore((s) => s.add);
   const token = useAuthStore((s) => s.token);
@@ -171,6 +172,8 @@ export default function ProductCard({
           src={p.image}
           alt={p.name}
           overlay
+          priority={priority}
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
           imgClassName="transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-105"
         />
 

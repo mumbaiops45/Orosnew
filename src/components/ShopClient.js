@@ -8,6 +8,7 @@ import ProductCard from "@/components/ProductCard";
 import PriceRange from "@/components/PriceRange";
 import { formatINR } from "@/lib/format";
 import { fetchCategories, fetchSubcategories, fetchProducts } from "@/lib/catalog";
+import { PAGE_SIZE, toApiParams, queryKey } from "@/lib/shopQuery";
 
 const SORTS = [
   { id: "price-asc", label: "Price — low to high" },
@@ -15,13 +16,11 @@ const SORTS = [
   { id: "new", label: "Newest" },
 ];
 
-// products per page — the backend pages /product (page, limit → pagination)
-const PAGE_SIZE = 24;
-
-const apiSort = (s) =>
-  s === "price-asc" ? "price_asc" : s === "price-desc" ? "price_desc" : undefined;
-
-export default function ShopClient() {
+/**
+ * `initial` is the first page the server already fetched (see
+ * app/(shop)/shop/page.js) — rendered straight away, no client round-trip.
+ */
+export default function ShopClient({ initial = null }) {
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -31,18 +30,29 @@ export default function ShopClient() {
   const subcategorySlug = params.get("subcategory") || "";
   const page = Math.max(1, Number(params.get("page")) || 1);
 
-  const [categories, setCategories] = useState([]);
-  const [subcategories, setSubcategories] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
+  const [categories, setCategories] = useState(initial?.categories || []);
+  const [subcategories, setSubcategories] = useState(
+    initial?.subcategories || []
+  );
+  const [products, setProducts] = useState(initial?.products || []);
+  const [loading, setLoading] = useState(!initial);
+  const [total, setTotal] = useState(
+    initial?.pagination?.total ?? initial?.products?.length ?? 0
+  );
+  const [totalPages, setTotalPages] = useState(
+    Math.max(1, initial?.pagination?.totalPages || 1)
+  );
   const filterSig = useRef(null);
+  // the query whose results are on screen — skips refetching the same thing
+  const shownKey = useRef(initial?.key || null);
 
   const [bounds, setBounds] = useState({ min: 0, max: 10000 });
   const [price, setPrice] = useState([0, 10000]);
   const [applied, setApplied] = useState([0, 10000]);
-  const [sort, setSort] = useState("price-asc");
+  const [sort, setSort] = useState(() => {
+    const s = params.get("sort");
+    return s && SORTS.some((x) => x.id === s) ? s : "price-asc";
+  });
   const [openFilter, setOpenFilter] = useState(null);
   const bar = useRef(null);
 
@@ -58,9 +68,10 @@ export default function ShopClient() {
     [subcategories, subcategorySlug]
   );
 
-  // categories once
+  // categories once (unless the server already sent them)
   useEffect(() => {
-    fetchCategories().then(setCategories);
+    if (!initial?.categories?.length) fetchCategories().then(setCategories);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // price bounds — the catalogue's real ceiling, once
@@ -91,12 +102,14 @@ export default function ShopClient() {
 
   // products follow category / subcategory / search
   useEffect(() => {
-    const apiParams = { sort: apiSort(sort) };
-    if (activeCategory) apiParams.category = activeCategory.id;
-    if (activeSubcategory) apiParams.subcategory = activeSubcategory.id;
-    if (q) apiParams.search = q;
-    if (applied[0] > bounds.min) apiParams.minPrice = applied[0];
-    if (applied[1] < bounds.max) apiParams.maxPrice = applied[1];
+    const apiParams = toApiParams({
+      sort,
+      categoryId: activeCategory?.id,
+      subcategoryId: activeSubcategory?.id,
+      q,
+      minPrice: applied[0] > bounds.min ? applied[0] : null,
+      maxPrice: applied[1] < bounds.max ? applied[1] : null,
+    });
 
     // price / sort live in state, not the URL — when any filter changes
     // while on page 3, drop back to page 1 instead of fetching a stale page
@@ -110,11 +123,27 @@ export default function ShopClient() {
       return;
     }
 
+    // already showing exactly this (e.g. the price ceiling just loaded but
+    // the filter itself did not change) — nothing to fetch
+    const key = queryKey(apiParams, page);
+    if (key === shownKey.current) return;
+
+    // the server fetched this page while rendering the route — use it
+    if (initial?.key === key) {
+      shownKey.current = key;
+      setProducts(initial.products || []);
+      setTotal(initial.pagination?.total ?? initial.products?.length ?? 0);
+      setTotalPages(Math.max(1, initial.pagination?.totalPages || 1));
+      setLoading(false);
+      return;
+    }
+
     let alive = true;
     setLoading(true);
     fetchProducts({ ...apiParams, page, limit: PAGE_SIZE }).then(
       ({ products, pagination }) => {
         if (!alive) return;
+        shownKey.current = key;
         setProducts(products);
         setTotal(pagination?.total ?? products.length);
         setTotalPages(Math.max(1, pagination?.totalPages || 1));
@@ -125,7 +154,7 @@ export default function ShopClient() {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCategory, activeSubcategory, q, applied, bounds, sort, page]);
+  }, [activeCategory, activeSubcategory, q, applied, bounds, sort, page, initial]);
 
   useEffect(() => {
     const s = params.get("sort");
@@ -422,8 +451,9 @@ export default function ShopClient() {
         </div>
       ) : (
         <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 lg:gap-4 xl:grid-cols-5">
-          {results.map((p) => (
-            <ProductCard key={p.slug || p.id} product={p} />
+          {results.map((p, i) => (
+            // first row loads eagerly — it is what the customer sees first
+            <ProductCard key={p.slug || p.id} product={p} priority={i < 5} />
           ))}
         </div>
       )}

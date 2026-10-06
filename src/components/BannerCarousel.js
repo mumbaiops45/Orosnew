@@ -98,7 +98,7 @@ export default function BannerCarousel({ banners = [] }) {
               src={slide.imageMobile}
               alt=""
               fill
-              priority={idx === 0}
+              preload={idx === 0}
               sizes="calc(100vw - 2rem)"
               className="block object-cover object-right lg:hidden"
             />
@@ -106,7 +106,7 @@ export default function BannerCarousel({ banners = [] }) {
               src={slide.imageDesktop}
               alt=""
               fill
-              priority={idx === 0}
+              preload={idx === 0}
               sizes="(max-width: 1600px) calc(100vw - 4rem), 1536px"
               className="hidden object-cover object-right lg:block"
             />
@@ -116,7 +116,7 @@ export default function BannerCarousel({ banners = [] }) {
           <div className={`absolute inset-0 bg-gradient-to-r ${t.scrim}`} />
           <div className={`absolute inset-0 lg:hidden ${t.scrimMobile}`} />
 
-          <div className="relative grid h-full items-center gap-6 px-6 py-12 sm:px-10 lg:grid-cols-[1.1fr_0.9fr] lg:py-16">
+          <div className="relative grid h-full items-center gap-6 px-12 py-12 sm:px-14 lg:grid-cols-[1.1fr_0.9fr] lg:py-16">
             <div className="max-w-xl">
               {slide.kicker && (
                 <span
@@ -173,14 +173,14 @@ export default function BannerCarousel({ banners = [] }) {
               <button
                 onClick={() => go(idx - 1)}
                 aria-label="Previous banner"
-                className={`absolute left-0 top-1/2 grid h-16 w-9 -translate-y-1/2 place-items-center rounded-r-md transition-colors ${t.arrow}`}
+                className={`absolute left-0 top-1/2 grid h-12 w-8 -translate-y-1/2 sm:h-16 sm:w-9 place-items-center rounded-r-md transition-colors ${t.arrow}`}
               >
                 <CaretLeft size={20} weight="bold" />
               </button>
               <button
                 onClick={() => go(idx + 1)}
                 aria-label="Next banner"
-                className={`absolute right-0 top-1/2 grid h-16 w-9 -translate-y-1/2 place-items-center rounded-l-md transition-colors ${t.arrow}`}
+                className={`absolute right-0 top-1/2 grid h-12 w-8 -translate-y-1/2 sm:h-16 sm:w-9 place-items-center rounded-l-md transition-colors ${t.arrow}`}
               >
                 <CaretRight size={20} weight="bold" />
               </button>

@@ -49,7 +49,8 @@ export default function ProductImage({
         alt={alt || ""}
         fill
         sizes={sizes}
-        priority={priority}
+        // Next 16: `preload` replaces the deprecated `priority`
+        preload={priority}
         onError={() => setFailed(true)}
         className={`${fit === "contain" ? "object-contain" : "object-cover"} ${imgClassName}`}
       />

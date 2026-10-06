@@ -137,7 +137,7 @@ export default function Header() {
               alt="OROS"
               width={150}
               height={150}
-              priority
+              preload
               className="h-12 w-12 rounded-xl bg-white object-contain p-1 ring-1 ring-neon/50 transition-all duration-300 group-hover:ring-2 group-hover:ring-neon lg:h-14 lg:w-14"
             />
           </Link>
@@ -145,9 +145,12 @@ export default function Header() {
           <span className="hidden h-10 w-px shrink-0 bg-white/12 lg:block" />
           <ProfileMenu />
 
-          <SearchBox />
+          {/* tablet / desktop: search sits in the main row */}
+          <div className="hidden min-w-0 flex-1 sm:flex lg:max-w-2xl">
+            <SearchBox />
+          </div>
 
-          <div className="flex shrink-0 items-center gap-2 lg:gap-3">
+          <div className="ml-auto flex shrink-0 items-center gap-2 sm:ml-0 lg:gap-3">
             <Link
               href="/custom"
               className="hidden items-center gap-2.5 rounded-xl border border-neon/35 bg-night-2 px-4 py-2 transition-colors hover:border-neon xl:flex"
@@ -194,6 +197,12 @@ export default function Header() {
               </span>
             </button>
           </div>
+        </div>
+
+        {/* phones: the main row is too tight, so search gets its own
+            full-width row under it, above the category rail */}
+        <div className="mt-3 flex sm:hidden">
+          <SearchBox />
         </div>
 
         {/* ══ Category rail ══ */}
