@@ -24,6 +24,9 @@ export default function SmoothScroll({ children }) {
     });
 
     lenis.on("scroll", ScrollTrigger.update);
+    // exposed so code that swaps a view in place can jump to the top
+    // through Lenis (see lib/scrollTop.js)
+    window.__lenis = lenis;
 
     const tick = (time) => lenis.raf(time * 1000);
     gsap.ticker.add(tick);
@@ -32,6 +35,7 @@ export default function SmoothScroll({ children }) {
     return () => {
       gsap.ticker.remove(tick);
       lenis.destroy();
+      if (window.__lenis === lenis) delete window.__lenis;
     };
   }, []);
 

@@ -10,6 +10,7 @@ import { createQuotation, listQuotations } from "@/api/quotation.api";
 import { getAddress } from "@/api/address.api";
 import { useAuthStore } from "@/store/authStore";
 import QuotationThread from "@/components/QuotationThread";
+import { scrollToTop } from "@/lib/scrollTop";
 
 // the quotation upload middleware only accepts 3D model files — keep this
 // list in sync with ALLOWED_3D_FORMATS in the backend upload middleware
@@ -281,6 +282,8 @@ export default function BulkDesk() {
         files: res.quotationFiles || [],
         messages: res.quotationMessage ? [res.quotationMessage] : [],
       });
+      // the confirmation view is much shorter than the form — start at the top
+      scrollToTop();
     } catch (e) {
       setErr(e.message);
     } finally {

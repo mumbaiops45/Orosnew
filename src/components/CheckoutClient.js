@@ -20,6 +20,7 @@ import * as couponApi from "@/api/coupon.api";
 import * as shippingApi from "@/api/shipping.api";
 import * as orderApi from "@/api/order.api";
 import { payForOrder } from "@/lib/razorpay";
+import { scrollToTop } from "@/lib/scrollTop";
 
 /**
  * Shiprocket returns `etd` as a date string ("Sep 12, 2026"); some couriers
@@ -333,6 +334,8 @@ export default function CheckoutClient() {
           null,
         courier: order.shipping?.courierName || selectedRate?.courierName || null,
       });
+      // the confirmation replaces the whole checkout — show it from the top
+      scrollToTop();
     } catch (e) {
       setError(e.message);
     } finally {
