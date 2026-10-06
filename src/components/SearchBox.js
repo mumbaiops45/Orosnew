@@ -142,6 +142,22 @@ export default function SearchBox() {
 
   const showPanel = open && needle.length > 0;
 
+  // on phones the input is squeezed between logo and icons, so the panel is
+  // pinned full-width under the header instead of matching the input's width
+  const [panelTop, setPanelTop] = useState(0);
+  useEffect(() => {
+    if (!showPanel) return;
+    const place = () =>
+      setPanelTop((wrap.current?.getBoundingClientRect().bottom || 0) + 8);
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, { passive: true });
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place);
+    };
+  }, [showPanel]);
+
   return (
     <div ref={wrap} className="relative min-w-0 flex-1 lg:max-w-2xl">
       <form
@@ -244,7 +260,9 @@ export default function SearchBox() {
         <div
           id={listId}
           role="listbox"
-          className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-line bg-shell shadow-[0_24px_60px_-20px_rgba(10,5,20,0.6)]"
+          data-lenis-prevent
+          style={{ "--panel-top": `${panelTop}px` }}
+          className="fixed inset-x-3 top-(--panel-top) z-50 max-h-[70vh] overflow-y-auto overscroll-contain rounded-2xl border border-line bg-shell shadow-[0_24px_60px_-20px_rgba(10,5,20,0.6)] sm:absolute sm:inset-x-0 sm:top-full sm:mt-2 sm:max-h-none sm:overflow-hidden"
         >
           {rows.length <= 1 && (
             <p className="px-4 py-6 text-center text-sm text-ink-3">

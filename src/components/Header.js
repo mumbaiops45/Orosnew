@@ -67,7 +67,17 @@ export default function Header() {
   }, []);
 
   useEffect(() => {
-    const onScroll = () => setCompact(window.scrollY > 40);
+    // hide the category rail on the first bit of scroll, and only bring it
+    // back at the very top — a single threshold made it flicker open/shut,
+    // since collapsing the rail itself moves the scroll position. Pages too
+    // short to scroll past the rail never collapse (that would loop too).
+    const onScroll = () => {
+      const y = window.scrollY;
+      const room =
+        document.documentElement.scrollHeight - window.innerHeight;
+      // Lenis can settle a hair above 0, hence 2 rather than 0
+      setCompact((c) => (c ? y > 2 : y > 8 && room > 160));
+    };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
@@ -188,7 +198,7 @@ export default function Header() {
 
         {/* ══ Category rail ══ */}
         <nav
-          className={`relative overflow-hidden rounded-2xl border-neon/25 bg-night-2 px-2 transition-all duration-300 ease-out ${
+          className={`relative overflow-hidden rounded-2xl border-neon/25 bg-night-2 px-2 transition-all duration-200 ease-out ${
             compact
               ? "mt-0 max-h-0 border-0 opacity-0"
               : "mt-3 max-h-40 border opacity-100"

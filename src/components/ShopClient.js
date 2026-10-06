@@ -15,6 +15,9 @@ const SORTS = [
   { id: "new", label: "Newest" },
 ];
 
+// products per page — the backend pages /product (page, limit → pagination)
+const PAGE_SIZE = 24;
+
 const apiSort = (s) =>
   s === "price-asc" ? "price_asc" : s === "price-desc" ? "price_desc" : undefined;
 
@@ -26,11 +29,15 @@ export default function ShopClient() {
   const q = params.get("q") || "";
   const categorySlug = params.get("category") || "";
   const subcategorySlug = params.get("subcategory") || "";
+  const page = Math.max(1, Number(params.get("page")) || 1);
 
   const [categories, setCategories] = useState([]);
   const [subcategories, setSubcategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const filterSig = useRef(null);
 
   const [bounds, setBounds] = useState({ min: 0, max: 10000 });
   const [price, setPrice] = useState([0, 10000]);
@@ -84,24 +91,41 @@ export default function ShopClient() {
 
   // products follow category / subcategory / search
   useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    const apiParams = { limit: 100, sort: apiSort(sort) };
+    const apiParams = { sort: apiSort(sort) };
     if (activeCategory) apiParams.category = activeCategory.id;
     if (activeSubcategory) apiParams.subcategory = activeSubcategory.id;
     if (q) apiParams.search = q;
     if (applied[0] > bounds.min) apiParams.minPrice = applied[0];
     if (applied[1] < bounds.max) apiParams.maxPrice = applied[1];
-    fetchProducts(apiParams).then(({ products }) => {
-      if (alive) {
+
+    // price / sort live in state, not the URL — when any filter changes
+    // while on page 3, drop back to page 1 instead of fetching a stale page
+    const sig = JSON.stringify(apiParams);
+    const changed = filterSig.current !== null && filterSig.current !== sig;
+    filterSig.current = sig;
+    if (changed && page > 1) {
+      const sp = new URLSearchParams(params.toString());
+      sp.delete("page");
+      router.replace(sp.toString() ? `${pathname}?${sp}` : pathname);
+      return;
+    }
+
+    let alive = true;
+    setLoading(true);
+    fetchProducts({ ...apiParams, page, limit: PAGE_SIZE }).then(
+      ({ products, pagination }) => {
+        if (!alive) return;
         setProducts(products);
+        setTotal(pagination?.total ?? products.length);
+        setTotalPages(Math.max(1, pagination?.totalPages || 1));
         setLoading(false);
       }
-    });
+    );
     return () => {
       alive = false;
     };
-  }, [activeCategory, activeSubcategory, q, applied, bounds, sort]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCategory, activeSubcategory, q, applied, bounds, sort, page]);
 
   useEffect(() => {
     const s = params.get("sort");
@@ -124,6 +148,8 @@ export default function ShopClient() {
 
   const setQuery = (next) => {
     const sp = new URLSearchParams(params.toString());
+    // any filter change starts again from page 1
+    if (!("page" in next)) sp.delete("page");
     Object.entries(next).forEach(([k, v]) => {
       if (v) sp.set(k, v);
       else sp.delete(k);
@@ -159,7 +185,7 @@ export default function ShopClient() {
     ? `“${q}”`
     : activeSubcategory?.name || activeCategory?.name || "All products";
   const tagline = q
-    ? `${results.length} match${results.length === 1 ? "" : "es"} across the catalogue`
+    ? `${total} match${total === 1 ? "" : "es"} across the catalogue`
     : activeCategory?.tagline ||
       activeCategory?.description ||
       "Every object we print, in one place";
@@ -204,9 +230,9 @@ export default function ShopClient() {
         </div>
         <p className="text-sm font-semibold text-ink-3">
           <span className="font-display text-2xl font-extrabold text-ink">
-            {results.length}
+            {total}
           </span>{" "}
-          {results.length === 1 ? "product" : "products"}
+          {total === 1 ? "product" : "products"}
         </p>
       </div>
 
@@ -401,7 +427,74 @@ export default function ShopClient() {
           ))}
         </div>
       )}
+
+      {!loading && totalPages > 1 && (
+        <Pager
+          page={Math.min(page, totalPages)}
+          totalPages={totalPages}
+          onPage={(n) => setQuery({ page: n > 1 ? String(n) : "" })}
+        />
+      )}
     </div>
+  );
+}
+
+/** Prev · 1 … 4 5 6 … 12 · Next — compact enough for a phone */
+function Pager({ page, totalPages, onPage }) {
+  const nums = [];
+  const from = Math.max(2, page - 1);
+  const to = Math.min(totalPages - 1, page + 1);
+  nums.push(1);
+  if (from > 2) nums.push("…l");
+  for (let n = from; n <= to; n++) nums.push(n);
+  if (to < totalPages - 1) nums.push("…r");
+  nums.push(totalPages);
+
+  const btn =
+    "grid h-10 min-w-10 place-items-center rounded-lg border px-3 text-sm font-bold transition-colors";
+
+  return (
+    <nav
+      aria-label="Pagination"
+      className="mt-10 flex flex-wrap items-center justify-center gap-1.5"
+    >
+      <button
+        onClick={() => onPage(page - 1)}
+        disabled={page <= 1}
+        aria-label="Previous page"
+        className={`${btn} border-line text-ink-2 hover:border-ink-5 disabled:opacity-40`}
+      >
+        <CaretLeft size={14} weight="bold" />
+      </button>
+      {nums.map((n) =>
+        typeof n === "string" ? (
+          <span key={n} className="px-1 text-sm text-ink-4">
+            …
+          </span>
+        ) : (
+          <button
+            key={n}
+            onClick={() => onPage(n)}
+            aria-current={n === page ? "page" : undefined}
+            className={`${btn} ${
+              n === page
+                ? "border-ink bg-ink text-white"
+                : "border-line text-ink-2 hover:border-ink-5"
+            }`}
+          >
+            {n}
+          </button>
+        )
+      )}
+      <button
+        onClick={() => onPage(page + 1)}
+        disabled={page >= totalPages}
+        aria-label="Next page"
+        className={`${btn} border-line text-ink-2 hover:border-ink-5 disabled:opacity-40`}
+      >
+        <CaretRight size={14} weight="bold" />
+      </button>
+    </nav>
   );
 }
 

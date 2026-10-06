@@ -132,7 +132,7 @@ export default function ProductCard({
       return;
     }
     if (pickedInCart) {
-      setHint("Already added to cart — pick a different option");
+      setHint("Already in cart — pick another option");
       return;
     }
     const chosen = options.map((o) => {
@@ -208,28 +208,28 @@ export default function ProductCard({
         {picking && (
           // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
           <div
-            className="absolute inset-0 z-20 flex flex-col bg-shell/95 p-3 backdrop-blur-[2px]"
+            className="absolute inset-0 z-20 flex flex-col bg-shell/95 p-2 backdrop-blur-[2px] sm:p-3"
             onClick={stop}
           >
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-extrabold uppercase tracking-wide text-ink-4">
-                Choose options
-              </span>
-              <button
-                type="button"
-                aria-label="Close"
-                onClick={(e) => {
-                  stop(e);
-                  setPicking(false);
-                  setHint("");
-                }}
-                className="grid h-6 w-6 place-items-center rounded-full text-ink-3 hover:bg-canvas"
-              >
-                <X size={13} weight="bold" />
-              </button>
-            </div>
+            {/* no heading — just a close button in the corner, so small
+                phone cards keep their room for the options themselves */}
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={(e) => {
+                stop(e);
+                setPicking(false);
+                setHint("");
+              }}
+              className="absolute right-1 top-1 z-10 grid h-6 w-6 place-items-center rounded-full bg-shell text-ink-3 shadow-sm hover:bg-canvas"
+            >
+              <X size={12} weight="bold" />
+            </button>
 
-            <div className="mt-1.5 flex-1 space-y-2.5 overflow-y-auto">
+            <div
+              data-lenis-prevent
+              className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-5"
+            >
               {options.map((opt) => (
                 <div key={opt.id || opt.name}>
                   <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-ink-4">
@@ -269,7 +269,7 @@ export default function ProductCard({
                           type="button"
                           onClick={(e) => pick(e, opt.name, v.value)}
                           aria-pressed={on}
-                          className={`rounded-md border px-2 py-1 text-[11px] font-bold transition ${
+                          className={`rounded-md border px-1.5 py-0.5 text-[10px] font-bold leading-tight sm:px-2 sm:py-1 sm:text-[11px] transition ${
                             on
                               ? "border-ink bg-ink text-white"
                               : "border-line text-ink-2 hover:border-ink-5"
@@ -285,13 +285,13 @@ export default function ProductCard({
             </div>
 
             {hint && (
-              <p className="mt-1 text-[10px] font-bold text-flame">{hint}</p>
+              <p className="mt-1 text-[10px] font-bold leading-tight text-flame">{hint}</p>
             )}
 
             <button
               type="button"
               onClick={confirmAdd}
-              className={`mt-2 w-full rounded-md px-3 py-2 text-[11px] font-extrabold uppercase tracking-wide transition-colors ${
+              className={`mt-1.5 w-full shrink-0 rounded-md px-2 py-1.5 text-[10px] sm:mt-2 sm:px-3 sm:py-2 sm:text-[11px] font-extrabold uppercase tracking-wide transition-colors ${
                 pickedInCart
                   ? "bg-canvas text-ink-3"
                   : "bg-gold text-ink hover:bg-gold-dk"
