@@ -286,7 +286,41 @@ export default function ProductDetail({ product: p }) {
                 ref={art}
                 className="relative aspect-square w-full overflow-hidden rounded-3xl bg-canvas"
               >
-                {active?.kind === "video" ? (
+                {/* every image slide is mounted and loaded up front, stacked;
+                    a thumbnail click only flips which one is visible, so the
+                    switch is instant instead of waiting on a fresh download */}
+                {slides.some((s) => s.kind !== "video") ? (
+                  slides.map((s, i) =>
+                    s.kind === "video" ? null : (
+                      <div
+                        key={i}
+                        aria-hidden={i !== activeSlide}
+                        className={`absolute inset-0 transition-opacity duration-150 ${
+                          i === activeSlide ? "opacity-100" : "opacity-0"
+                        }`}
+                      >
+                        <ProductImage
+                          src={s.url}
+                          alt={i === activeSlide ? p.name : ""}
+                          sizes="(max-width: 1024px) 100vw, 420px"
+                          priority={i === 0}
+                          overlay
+                        />
+                      </div>
+                    )
+                  )
+                ) : (
+                  active?.kind !== "video" && (
+                    <ProductImage
+                      src={p.image}
+                      alt={p.name}
+                      sizes="(max-width: 1024px) 100vw, 420px"
+                      priority
+                      overlay
+                    />
+                  )
+                )}
+                {active?.kind === "video" && (
                   <video
                     key={active.url}
                     src={active.url}
@@ -295,15 +329,7 @@ export default function ProductDetail({ product: p }) {
                     playsInline
                     preload="metadata"
                     aria-label={active.alt || `${p.name} video`}
-                    className="absolute inset-0 h-full w-full bg-black object-contain"
-                  />
-                ) : (
-                  <ProductImage
-                    src={active?.url || p.image}
-                    alt={p.name}
-                    sizes="(max-width: 1024px) 100vw, 420px"
-                    priority
-                    overlay
+                    className="absolute inset-0 z-1 h-full w-full bg-black object-contain"
                   />
                 )}
                 <div
