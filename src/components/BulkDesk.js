@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { CaretRight, Plus, Trash } from "@phosphor-icons/react";
 import { fetchProducts } from "@/lib/catalog";
 import { createQuotation, listQuotations } from "@/api/quotation.api";
@@ -41,6 +42,8 @@ function RequiredField({ children, className = "" }) {
 export default function BulkDesk() {
   const params = useSearchParams();
   const pathname = usePathname();
+  const router = useRouter();
+  const { confirm: confirmLeave, ConfirmDialog } = useConfirm();
   // /custom is a dedicated custom-quote route; /bulk?custom keeps working too
   const isCustom = pathname === "/custom" || params.has("custom");
   const productParam = params.get("product");
@@ -87,6 +90,16 @@ export default function BulkDesk() {
       { productId: ls[i].productId, qty: 250, options: {} },
       ...ls.slice(i + 1),
     ]);
+  // custom quotes: catalogue products the request is based on, each once
+  const [refs, setRefsRaw] = useState([{ productId: "", qty: 1 }]);
+  const setRefs = (update) => {
+    setTouched(true);
+    setRefsRaw(update);
+  };
+  const setRef = (i, patch) =>
+    setRefs((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const removeRef = (i) => setRefs((rs) => rs.filter((_, j) => j !== i));
+  const addRef = () => setRefs((rs) => [...rs, { productId: "", qty: 1 }]);
   const [created, setCreated] = useState(null);
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState("");
@@ -101,8 +114,6 @@ export default function BulkDesk() {
     taxRegNo: "",
     requirements: "",
     deadline: "",
-    preferredProductId: "",
-    preferredQty: 1,
     variantDetails: "",
     addressLine1: "",
     addressLine2: "",
@@ -129,13 +140,13 @@ export default function BulkDesk() {
       files.length > 0 ||
       Object.entries(form).some(
         ([k, v]) =>
-          !["country", "preferredQty"].includes(k) && String(v).trim() !== ""
+          k !== "country" && String(v).trim() !== ""
       ));
 
   useEffect(() => {
     if (!dirty) return;
     const LEAVE_MSG =
-      "You haven't sent this quotation yet. If you leave this page, the products you added will be lost and you'll have to add them again. Leave anyway?";
+      "You haven't sent this quotation yet. If you leave this page, all the products you added will be lost and you'll have to add them again.";
 
     // reload / close tab / typed URL — browsers only show their own text
     const onBeforeUnload = (e) => {
@@ -157,10 +168,15 @@ export default function BulkDesk() {
         url.search === window.location.search
       )
         return;
-      if (!window.confirm(LEAVE_MSG)) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
+      // hold the navigation and ask in the site's own popup
+      e.preventDefault();
+      e.stopPropagation();
+      confirmLeave(LEAVE_MSG, "Leave page").then((leave) => {
+        if (!leave) return;
+        if (url.origin === window.location.origin)
+          router.push(url.pathname + url.search + url.hash);
+        else window.location.href = url.href;
+      });
     };
 
     window.addEventListener("beforeunload", onBeforeUnload);
@@ -169,7 +185,7 @@ export default function BulkDesk() {
       window.removeEventListener("beforeunload", onBeforeUnload);
       document.removeEventListener("click", onClick, true);
     };
-  }, [dirty]);
+  }, [dirty, confirmLeave, router]);
 
   const reloadCreated = async () => {
     const data = await listQuotations({ limit: 50 });
@@ -246,6 +262,11 @@ export default function BulkDesk() {
             f.requirements
               ? f
               : { ...f, requirements: `Custom order based on ${fromLink.name}: ` }
+          );
+          setRefsRaw((rs) =>
+            rs[0] && !rs[0].productId
+              ? [{ ...rs[0], productId: fromLink.id }, ...rs.slice(1)]
+              : rs
           );
         }
       }
@@ -336,15 +357,22 @@ export default function BulkDesk() {
       fd.append("taxRegNo", form.taxRegNo);
       if (form.deadline) fd.append("deadline", form.deadline);
 
-      const preferred = products.find(
-        (p) => p.id === form.preferredProductId
-      );
+      const preferred = refs
+        .map((r) => ({
+          product: productMap.get(String(r.productId)),
+          qty: Math.max(1, Number(r.qty) || 1),
+        }))
+        .filter((r) => r.product);
       fd.append(
         "requirements",
         isCustom
           ? [
               form.requirements,
-              preferred ? `Closest product in range: ${preferred.name}` : "",
+              preferred.length
+                ? `Closest products in range: ${preferred
+                    .map(({ product: p, qty }) => `${qty} × ${p.name}`)
+                    .join("; ")}`
+                : "",
               form.variantDetails
                 ? `Variant / spec needed (not in catalogue): ${form.variantDetails}`
                 : "",
@@ -389,15 +417,12 @@ export default function BulkDesk() {
             }))
           )
         );
-      } else if (isCustom && preferred) {
+      } else if (isCustom && preferred.length) {
         fd.append(
           "items",
-          JSON.stringify([
-            {
-              productId: preferred.id,
-              qty: Math.max(1, Number(form.preferredQty) || 1),
-            },
-          ])
+          JSON.stringify(
+            preferred.map(({ product: p, qty }) => ({ productId: p.id, qty }))
+          )
         );
       }
       // no preferred product picked — that's fine, the desk prices a
@@ -465,6 +490,7 @@ export default function BulkDesk() {
 
   return (
     <div className="mx-auto flex max-w-[1600px] flex-col px-4 pb-20 lg:px-8">
+      {ConfirmDialog}
       <nav className="flex items-center gap-1.5 py-4 text-xs text-ink-3">
         <Link href="/" className="hover:text-flame">
           Home
@@ -804,51 +830,89 @@ export default function BulkDesk() {
 
               {isCustom && (
                 <>
-                  <label className="block sm:col-span-2">
-                    <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-ink-4">
-                      Closest product in our range (optional)
+                  {/* reference products — each one only once; a product
+                      picked in one row is left out of the others */}
+                  <div className="space-y-2 sm:col-span-2">
+                    <span className="block text-xs font-bold uppercase tracking-wider text-ink-4">
+                      Closest products in our range (optional)
                     </span>
-                    <select
-                      value={form.preferredProductId}
-                      onChange={set("preferredProductId")}
-                      className="h-12 w-full rounded-xl border border-line bg-shell px-4 text-sm font-semibold text-ink outline-none focus:border-flame"
+                    {refs.map((r, i) => {
+                      const takenElsewhere = new Set(
+                        refs
+                          .filter((_, j) => j !== i)
+                          .map((x) => String(x.productId))
+                          .filter(Boolean)
+                      );
+                      return (
+                        <div
+                          key={i}
+                          className="grid grid-cols-[minmax(0,1fr)_110px_auto] items-center gap-2"
+                        >
+                          <select
+                            value={r.productId}
+                            onChange={(e) =>
+                              setRef(i, { productId: e.target.value })
+                            }
+                            className="h-12 w-full rounded-xl border border-line bg-shell px-4 text-sm font-semibold text-ink outline-none focus:border-flame"
+                          >
+                            <option value="">— not sure / nothing close —</option>
+                            {products
+                              .filter((p) => !takenElsewhere.has(String(p.id)))
+                              .map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name}
+                                  {p.categoryName ? ` — ${p.categoryName}` : ""}
+                                </option>
+                              ))}
+                          </select>
+                          <input
+                            type="number"
+                            min={1}
+                            aria-label="Quantity needed"
+                            placeholder="Qty"
+                            disabled={!r.productId}
+                            value={r.productId ? r.qty : ""}
+                            onChange={(e) =>
+                              setRef(i, {
+                                qty: Math.max(1, Number(e.target.value) || 1),
+                              })
+                            }
+                            className="no-spin h-12 w-full rounded-xl border border-line px-3 text-sm outline-none focus:border-flame disabled:opacity-40"
+                          />
+                          {refs.length > 1 ? (
+                            <button
+                              type="button"
+                              onClick={() => removeRef(i)}
+                              aria-label="Remove reference product"
+                              className="grid h-12 w-12 place-items-center rounded-xl border border-line text-ink-3 transition-colors hover:border-flame hover:text-flame"
+                            >
+                              <Trash size={14} />
+                            </button>
+                          ) : (
+                            <span className="w-12" />
+                          )}
+                        </div>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={addRef}
+                      disabled={
+                        refs.some((r) => !r.productId) ||
+                        refs.length >= products.length
+                      }
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-xs font-bold text-ink-2 transition-colors hover:border-flame hover:text-flame disabled:opacity-40"
                     >
-                      <option value="">— not sure / nothing close —</option>
-                      {products.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                          {p.categoryName ? ` — ${p.categoryName}` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  {/* only matters once a closest-match product is picked —
-                      that's what makes this "the same, but N units of a
-                      variant we don't list" rather than a free-text ask */}
-                  {form.preferredProductId && (
-                    <label className="block">
-                      <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-ink-4">
-                        Quantity needed<span className="text-flame"> *</span>
-                      </span>
-                      <input
-                        required
-                        type="number"
-                        min={1}
-                        value={form.preferredQty}
-                        onChange={set("preferredQty")}
-                        className="h-12 w-full rounded-xl border border-line px-4 text-sm outline-none focus:border-flame"
-                      />
-                    </label>
-                  )}
+                      <Plus size={12} weight="bold" />
+                      Add another reference product
+                    </button>
+                  </div>
 
                   <input
                     placeholder="Which colour / size / material do you need that we don't list?"
                     value={form.variantDetails}
                     onChange={set("variantDetails")}
-                    className={`h-12 rounded-xl border border-line px-4 text-sm outline-none focus:border-flame ${
-                      form.preferredProductId ? "" : "sm:col-span-2"
-                    }`}
+                    className="h-12 rounded-xl border border-line px-4 text-sm outline-none focus:border-flame sm:col-span-2"
                   />
                 </>
               )}
@@ -966,14 +1030,58 @@ export default function BulkDesk() {
                             )}) can be attached`
                           : ""
                     );
-                    setFiles(ok.slice(0, 10));
+                    // each pick adds to what's already attached (skipping
+                    // duplicates) — the route takes up to 10
+                    const merged = [...files];
+                    for (const f of ok) {
+                      if (
+                        !merged.some(
+                          (x) => x.name === f.name && x.size === f.size
+                        )
+                      )
+                        merged.push(f);
+                    }
+                    if (merged.length > 10 && !tooBig.length && !wrongType.length)
+                      setErr("Only 10 files can be attached — the extra ones were skipped");
+                    setFiles(merged.slice(0, 10));
+                    // let the same file be picked again after removing it
+                    e.target.value = "";
                   }}
                   className="block w-full text-xs text-ink-2 file:mr-3 file:rounded-lg file:border-0 file:bg-canvas file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-ink"
                 />
                 {files.length > 0 && (
-                  <span className="mt-1 block text-xs text-ink-3">
-                    {files.length} file{files.length === 1 ? "" : "s"} attached
-                  </span>
+                  <>
+                    <span className="mt-2 block text-xs text-ink-3">
+                      {files.length} / 10 file{files.length === 1 ? "" : "s"}{" "}
+                      attached — pick again to add more
+                    </span>
+                    <ul className="mt-2 space-y-1.5">
+                      {files.map((f, i) => (
+                        <li
+                          key={`${f.name}-${f.size}`}
+                          className="flex items-center justify-between gap-3 rounded-lg bg-canvas px-3 py-1.5 text-xs"
+                        >
+                          <span className="min-w-0 truncate font-semibold text-ink">
+                            {f.name}
+                            <span className="ml-2 font-normal text-ink-3">
+                              {(f.size / (1024 * 1024)).toFixed(1)} MB
+                            </span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setFiles((fs) => fs.filter((_, j) => j !== i));
+                            }}
+                            aria-label={`Remove ${f.name}`}
+                            className="shrink-0 text-ink-3 hover:text-flame"
+                          >
+                            <Trash size={14} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
                 )}
               </label>
               )}
