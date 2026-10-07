@@ -11,6 +11,7 @@ import { getAddress } from "@/api/address.api";
 import { useAuthStore } from "@/store/authStore";
 import QuotationThread from "@/components/QuotationThread";
 import { scrollToTop } from "@/lib/scrollTop";
+import { colorHex } from "@/lib/format";
 
 // the quotation upload middleware only accepts 3D model files — keep this
 // list in sync with ALLOWED_3D_FORMATS in the backend upload middleware
@@ -44,19 +45,48 @@ export default function BulkDesk() {
   const isCustom = pathname === "/custom" || params.has("custom");
   const productParam = params.get("product");
   const qtyParam = Number(params.get("qty")) || 0;
+  // the variant picked on the PDP, as { optionName: value }
+  const optionsParam = useMemo(() => {
+    try {
+      const o = JSON.parse(params.get("options") || "{}");
+      return o && typeof o === "object" ? o : {};
+    } catch {
+      return {};
+    }
+  }, [params]);
   const token = useAuthStore((s) => s.token);
 
   const [products, setProducts] = useState([]);
-  // bulk quotes can carry several products — one row per product
-  const [lines, setLines] = useState([
-    { productId: "", qty: qtyParam > 0 ? qtyParam : 250 },
+  // bulk quotes can carry several products — one row per product variant;
+  // options is { optionName: value }
+  const [lines, setLinesRaw] = useState([
+    { productId: "", qty: qtyParam > 0 ? qtyParam : 250, options: {} },
   ]);
+  // any edit by the customer marks the rows as unsent work worth guarding
+  const [touched, setTouched] = useState(false);
+  const setLines = (update) => {
+    setTouched(true);
+    setLinesRaw(update);
+  };
   const setLine = (i, patch) =>
     setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  const setLineOption = (i, name, value) =>
+    setLines((ls) =>
+      ls.map((l, j) =>
+        j === i ? { ...l, options: { ...l.options, [name]: value } } : l
+      )
+    );
   const removeLine = (i) => setLines((ls) => ls.filter((_, j) => j !== i));
   // a new row starts empty — the customer picks the product themselves
   const addLine = () =>
-    setLines((ls) => [...ls, { productId: "", qty: 250 }]);
+    setLines((ls) => [...ls, { productId: "", qty: 250, options: {} }]);
+  // another variant of the same product, right below its row
+  const addVariant = (i) =>
+    setLines((ls) => [
+      ...ls.slice(0, i + 1),
+      { productId: ls[i].productId, qty: 250, options: {} },
+      ...ls.slice(i + 1),
+    ]);
   const [created, setCreated] = useState(null);
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState("");
@@ -86,6 +116,60 @@ export default function BulkDesk() {
     () => new Map(products.map((p) => [String(p.id), p])),
     [products]
   );
+
+  /*
+  Nothing here is saved until the request is sent, so warn before the
+  customer walks away from products they've added (arriving from a PDP
+  counts — that product was added for them).
+  */
+  const dirty =
+    !created &&
+    (touched ||
+      !!productParam ||
+      files.length > 0 ||
+      Object.entries(form).some(
+        ([k, v]) =>
+          !["country", "preferredQty"].includes(k) && String(v).trim() !== ""
+      ));
+
+  useEffect(() => {
+    if (!dirty) return;
+    const LEAVE_MSG =
+      "You haven't sent this quotation yet. If you leave this page, the products you added will be lost and you'll have to add them again. Leave anyway?";
+
+    // reload / close tab / typed URL — browsers only show their own text
+    const onBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+
+    // in-app links: runs in the capture phase, before Next's <Link> handler
+    const onClick = (e) => {
+      if (e.defaultPrevented || e.button !== 0) return;
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const a = e.target.closest?.("a[href]");
+      if (!a || a.target === "_blank" || a.hasAttribute("download")) return;
+      const url = new URL(a.href, window.location.href);
+      // same-page anchors (e.g. #enquiry) don't leave the page
+      if (
+        url.origin === window.location.origin &&
+        url.pathname === window.location.pathname &&
+        url.search === window.location.search
+      )
+        return;
+      if (!window.confirm(LEAVE_MSG)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    window.addEventListener("beforeunload", onBeforeUnload);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, [dirty]);
 
   const reloadCreated = async () => {
     const data = await listQuotations({ limit: 50 });
@@ -134,9 +218,26 @@ export default function BulkDesk() {
         );
       const first = fromLink || products[0];
       if (first)
-        setLines((ls) =>
+        setLinesRaw((ls) =>
           ls.map((l, i) =>
-            i === 0 && !l.productId ? { ...l, productId: first.id } : l
+            i === 0 && !l.productId
+              ? {
+                  ...l,
+                  productId: first.id,
+                  // keep only PDP picks that are real options of this product
+                  options: fromLink
+                    ? Object.fromEntries(
+                        (fromLink.options || [])
+                          .filter((o) =>
+                            (o.values || []).some(
+                              (v) => v.value === optionsParam[o.name]
+                            )
+                          )
+                          .map((o) => [o.name, optionsParam[o.name]])
+                      )
+                    : {},
+                }
+              : l
           )
         );
       if (fromLink) {
@@ -152,17 +253,31 @@ export default function BulkDesk() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productParam, isCustom]);
 
-  // the filled-in rows, with the same product merged into one line
+  // the filled-in rows, with the same product + variant merged into one line
   const chosen = useMemo(() => {
-    const byId = new Map();
+    const byKey = new Map();
     for (const l of lines) {
       const p = productMap.get(String(l.productId));
       if (!p) continue;
-      const prev = byId.get(p.id);
-      byId.set(p.id, { product: p, qty: (prev?.qty || 0) + l.qty });
+      const selectedOptions = (p.options || [])
+        .filter((o) => l.options?.[o.name])
+        .map((o) => ({ name: o.name, value: l.options[o.name] }));
+      const key = `${p.id}|${selectedOptions
+        .map((o) => `${o.name}=${o.value}`)
+        .join("&")}`;
+      const prev = byKey.get(key);
+      byKey.set(key, {
+        key,
+        product: p,
+        selectedOptions,
+        qty: (prev?.qty || 0) + l.qty,
+      });
     }
-    return [...byId.values()];
+    return [...byKey.values()];
   }, [lines, productMap]);
+
+  const variantLabel = (opts) =>
+    opts.length ? ` (${opts.map((o) => o.value).join(" / ")})` : "";
 
   const submit = async (e) => {
     e.preventDefault();
@@ -195,6 +310,19 @@ export default function BulkDesk() {
             : "Select a product"
         );
       if (chosen.length === 0) return setErr("Add at least one product");
+      // every option must be picked on each row, same as the PDP
+      for (let i = 0; i < lines.length; i++) {
+        const p = productMap.get(String(lines[i].productId));
+        const missing = (p?.options || []).find(
+          (o) => !lines[i].options?.[o.name]
+        );
+        if (missing)
+          return setErr(
+            `Choose a ${missing.name} for ${p.name}${
+              lines.length > 1 ? ` (row ${i + 1})` : ""
+            }`
+          );
+      }
     }
 
     setSending(true);
@@ -226,8 +354,10 @@ export default function BulkDesk() {
           : [
               chosen
                 .map(
-                  ({ product: p, qty }) =>
-                    `${qty} × ${p.name}${p.sku ? ` (SKU ${p.sku})` : ""}`
+                  ({ product: p, qty, selectedOptions }) =>
+                    `${qty} × ${p.name}${variantLabel(selectedOptions)}${
+                      p.sku ? ` (SKU ${p.sku})` : ""
+                    }`
                 )
                 .join("; "),
               form.requirements || "",
@@ -252,7 +382,11 @@ export default function BulkDesk() {
         fd.append(
           "items",
           JSON.stringify(
-            chosen.map(({ product: p, qty }) => ({ productId: p.id, qty }))
+            chosen.map(({ product: p, qty, selectedOptions }) => ({
+              productId: p.id,
+              qty,
+              selectedOptions,
+            }))
           )
         );
       } else if (isCustom && preferred) {
@@ -411,7 +545,9 @@ export default function BulkDesk() {
                     </span>
                     <select
                       value={l.productId}
-                      onChange={(e) => setLine(i, { productId: e.target.value })}
+                      onChange={(e) =>
+                        setLine(i, { productId: e.target.value, options: {} })
+                      }
                       className={`h-11 w-full rounded-lg border bg-shell px-3 text-sm font-bold outline-none focus:border-flame ${
                         l.productId ? "border-line text-ink" : "border-flame/50 text-ink-3"
                       }`}
@@ -460,6 +596,64 @@ export default function BulkDesk() {
                       <span className="sm:hidden">Remove</span>
                     </button>
                   )}
+
+                  {/* ── variant options, same pills as the PDP ── */}
+                  {(p?.options || []).length > 0 && (
+                    <div className="col-span-full space-y-3 border-t border-dashed border-line pt-3">
+                      {p.options.map((opt) => (
+                        <div key={opt.id || opt.name}>
+                          <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-ink-4">
+                            {opt.name}
+                            <span className="text-flame"> *</span>
+                            <span className="ml-2 normal-case font-semibold tracking-normal text-ink-2">
+                              {l.options?.[opt.name] || "Choose one"}
+                            </span>
+                          </span>
+                          <div className="flex flex-wrap gap-2">
+                            {(opt.values || []).map((v) => {
+                              const on = l.options?.[opt.name] === v.value;
+                              return (
+                                <button
+                                  type="button"
+                                  key={v.id || v.value}
+                                  onClick={() => {
+                                    setLineOption(i, opt.name, v.value);
+                                    setErr("");
+                                  }}
+                                  aria-pressed={on}
+                                  className={`flex items-center gap-2 rounded-full border-2 py-1 pr-3.5 transition-all ${
+                                    opt.type === "COLOR" ? "pl-1" : "pl-3.5"
+                                  } ${
+                                    on
+                                      ? "border-ink bg-ink text-white"
+                                      : "border-line text-ink-2 hover:border-ink-5"
+                                  }`}
+                                >
+                                  {opt.type === "COLOR" && (
+                                    <span
+                                      className="h-6 w-6 rounded-full ring-1 ring-inset ring-black/10"
+                                      style={{ backgroundColor: colorHex(v.value) }}
+                                    />
+                                  )}
+                                  <span className="text-sm font-bold">
+                                    {v.value}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => addVariant(i)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-xs font-bold text-ink-2 transition-colors hover:border-flame hover:text-flame"
+                      >
+                        <Plus size={12} weight="bold" />
+                        Add another variant of {p.name}
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -468,7 +662,7 @@ export default function BulkDesk() {
               <button
                 type="button"
                 onClick={addLine}
-                disabled={lines.length >= products.length}
+                disabled={products.length === 0}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-flame px-4 py-3 text-sm font-extrabold uppercase tracking-wide text-flame transition-colors hover:bg-flame-lt disabled:opacity-40"
               >
                 <Plus size={14} weight="bold" />
@@ -504,12 +698,13 @@ export default function BulkDesk() {
 
             {!isCustom && chosen.length > 0 && (
               <div className="mt-4 flex flex-wrap items-center gap-2">
-                {chosen.map(({ product: p, qty }) => (
+                {chosen.map(({ key, product: p, qty, selectedOptions }) => (
                   <span
-                    key={p.id}
+                    key={key}
                     className="rounded-xl bg-canvas px-3 py-2 text-sm font-bold text-ink"
                   >
                     {qty.toLocaleString("en-IN")} × {p.name}
+                    {variantLabel(selectedOptions)}
                   </span>
                 ))}
                 <span className="text-sm font-semibold text-ink-2">

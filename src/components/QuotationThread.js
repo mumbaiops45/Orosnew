@@ -255,6 +255,14 @@ export default function QuotationThread({
               >
                 <span className="text-ink-2">
                   {itemName(it)}
+                  {(it.selectedOptions || []).length > 0 && (
+                    <span className="text-ink-3">
+                      {" "}
+                      ({it.selectedOptions
+                        .map((o) => `${o.name}: ${o.value}`)
+                        .join(", ")})
+                    </span>
+                  )}
                   {/* a custom item with no catalogue product carries a
                       placeholder qty, not a real one — don't show it */}
                   {it.product ? ` × ${it.qty}` : ""}

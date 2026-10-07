@@ -128,6 +128,22 @@ export default function ProductDetail({ product: p }) {
   );
   const nextTier = tiers[tierIndex + 1];
 
+  // carries the picked variant over to the bulk-quote page
+  const bulkOptsParam = Object.keys(selected).length
+    ? `&options=${encodeURIComponent(JSON.stringify(selected))}`
+    : "";
+
+  // a variant product needs every option picked before it can go to the
+  // bulk desk — same rule as add-to-cart
+  const optionsRef = useRef(null);
+  const guardBulk = (e) => {
+    const missing = missingOption();
+    if (!missing) return;
+    e.preventDefault();
+    setOptError(`Please select ${missing.name} before starting a bulk order`);
+    optionsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const selectedOptions = () =>
     (p.options || []).map((o) => {
       const v = (o.values || []).find((x) => x.value === selected[o.name]);
@@ -368,6 +384,7 @@ export default function ProductDetail({ product: p }) {
           </div>
 
           {/* ── Options — fully dynamic from the backend ── */}
+          <span ref={optionsRef} className="block scroll-mt-28" />
           {(p.options || []).map((opt, i) => (
             <Section
               key={opt.id || opt.name}
@@ -519,7 +536,8 @@ export default function ProductDetail({ product: p }) {
                 </div>
               </div>
               <Link
-                href={`/bulk?product=${p.slug || p.id}&qty=${qty}`}
+                href={`/bulk?product=${p.slug || p.id}&qty=${qty}${bulkOptsParam}`}
+                onClick={guardBulk}
                 className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-neon py-3.5 text-sm font-extrabold uppercase tracking-wide text-white transition-opacity hover:opacity-90"
               >
                 Start bulk order
@@ -666,7 +684,8 @@ export default function ProductDetail({ product: p }) {
                 href={`/bulk?product=${p.slug || p.id}&qty=${Math.max(
                   qty,
                   BULK_THRESHOLD
-                )}`}
+                )}${bulkOptsParam}`}
+                onClick={guardBulk}
                 className="mt-5 inline-flex items-center gap-2 rounded-xl bg-flame px-5 py-3 text-sm font-extrabold uppercase tracking-wide text-white transition-colors hover:bg-flame-dk"
               >
                 Get a bulk quote
