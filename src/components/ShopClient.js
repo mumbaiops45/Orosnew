@@ -262,6 +262,11 @@ export default function ShopClient({ initial = null }) {
             {total}
           </span>{" "}
           {total === 1 ? "product" : "products"}
+          {totalPages > 1 && (
+            <span className="ml-2 text-ink-4">
+              · Page {Math.min(page, totalPages)} of {totalPages}
+            </span>
+          )}
         </p>
       </div>
 
@@ -484,47 +489,53 @@ function Pager({ page, totalPages, onPage }) {
     "grid h-10 min-w-10 place-items-center rounded-lg border px-3 text-sm font-bold transition-colors";
 
   return (
-    <nav
-      aria-label="Pagination"
-      className="mt-10 flex flex-wrap items-center justify-center gap-1.5"
-    >
-      <button
-        onClick={() => onPage(page - 1)}
-        disabled={page <= 1}
-        aria-label="Previous page"
-        className={`${btn} border-line text-ink-2 hover:border-ink-5 disabled:opacity-40`}
+    <div className="mt-10">
+      <p className="mb-3 text-center text-sm font-semibold text-ink-3">
+        Page <span className="font-extrabold text-ink">{page}</span> of{" "}
+        <span className="font-extrabold text-ink">{totalPages}</span>
+      </p>
+      <nav
+        aria-label="Pagination"
+        className="flex flex-wrap items-center justify-center gap-1.5"
       >
-        <CaretLeft size={14} weight="bold" />
-      </button>
-      {nums.map((n) =>
-        typeof n === "string" ? (
-          <span key={n} className="px-1 text-sm text-ink-4">
-            …
-          </span>
-        ) : (
-          <button
-            key={n}
-            onClick={() => onPage(n)}
-            aria-current={n === page ? "page" : undefined}
-            className={`${btn} ${
-              n === page
-                ? "border-ink bg-ink text-white"
-                : "border-line text-ink-2 hover:border-ink-5"
-            }`}
-          >
-            {n}
-          </button>
-        )
-      )}
-      <button
-        onClick={() => onPage(page + 1)}
-        disabled={page >= totalPages}
-        aria-label="Next page"
-        className={`${btn} border-line text-ink-2 hover:border-ink-5 disabled:opacity-40`}
-      >
-        <CaretRight size={14} weight="bold" />
-      </button>
-    </nav>
+        <button
+          onClick={() => onPage(page - 1)}
+          disabled={page <= 1}
+          aria-label="Previous page"
+          className={`${btn} border-line text-ink-2 hover:border-ink-5 disabled:opacity-40`}
+        >
+          <CaretLeft size={14} weight="bold" />
+        </button>
+        {nums.map((n) =>
+          typeof n === "string" ? (
+            <span key={n} className="px-1 text-sm text-ink-4">
+              …
+            </span>
+          ) : (
+            <button
+              key={n}
+              onClick={() => onPage(n)}
+              aria-current={n === page ? "page" : undefined}
+              className={`${btn} ${
+                n === page
+                  ? "border-ink bg-ink text-white"
+                  : "border-line text-ink-2 hover:border-ink-5"
+              }`}
+            >
+              {n}
+            </button>
+          )
+        )}
+        <button
+          onClick={() => onPage(page + 1)}
+          disabled={page >= totalPages}
+          aria-label="Next page"
+          className={`${btn} border-line text-ink-2 hover:border-ink-5 disabled:opacity-40`}
+        >
+          <CaretRight size={14} weight="bold" />
+        </button>
+      </nav>
+    </div>
   );
 }
 
