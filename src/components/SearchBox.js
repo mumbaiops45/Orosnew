@@ -8,6 +8,7 @@ import {
   CaretDown,
   ArrowUpRight,
   Check,
+  X,
 } from "@phosphor-icons/react";
 import { formatINR } from "@/lib/format";
 import { fetchCategories, fetchProducts } from "@/lib/catalog";
@@ -38,6 +39,7 @@ export default function SearchBox() {
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const wrap = useRef(null);
+  const inputRef = useRef(null);
   const listId = useId();
 
   const needle = q.trim().toLowerCase();
@@ -229,6 +231,7 @@ export default function SearchBox() {
         <span className="hidden h-6 w-px shrink-0 bg-white/15 sm:block" />
 
         <input
+          ref={inputRef}
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
@@ -246,6 +249,23 @@ export default function SearchBox() {
           autoComplete="off"
           className="h-10 min-w-0 flex-1 bg-transparent px-4 text-sm text-white outline-none placeholder:text-white/35"
         />
+
+        {/* clear — wipes the typed text and closes the suggestions */}
+        {q && (
+          <button
+            type="button"
+            onClick={() => {
+              setQ("");
+              setActive(-1);
+              setOpen(false);
+              inputRef.current?.focus();
+            }}
+            aria-label="Clear search"
+            className="mr-1 grid h-8 w-8 shrink-0 place-items-center rounded-full text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            <X size={15} weight="bold" />
+          </button>
+        )}
 
         <button
           type="submit"
